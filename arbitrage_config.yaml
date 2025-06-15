@@ -1,0 +1,74 @@
+# DEX Arbitrage Strategy Configuration for Solana
+# This configuration enables a market-neutral arbitrage strategy
+# that profits from price differences between Solana DEXes
+
+# Wallet configuration
+wallet_path: "./kp.json"  # Path to your Solana keypair JSON file
+
+# Trading mode configuration
+trading:
+  mode: "paper"  # Use "paper" for testing, "mainnet" for real trading
+  paper_balance: 1000   # Initial paper trading balance in USD
+  token_symbol: "SOL"   # Default token symbol
+  trade_amount: 100     # Default trade amount in USD
+
+# Solana RPC configuration
+solana:
+  rpc_endpoint: "https://api.mainnet-beta.solana.com"  # Public RPC endpoint
+  commitment: "confirmed"  # Transaction commitment level
+
+# DEX Arbitrage strategy configuration
+arbitrage:
+  # Minimum profit percentage required to execute a trade
+  min_profit_percentage: 0.1  # 0.1% minimum profit after all fees and slippage
+  
+  # Maximum percentage of portfolio to use for a single arbitrage opportunity
+  max_exposure_percentage: 30  # Up to 30% of portfolio in a single trade
+  
+  # Cooldown period between arbitrage trades for the same token pair (seconds)
+  cooldown_seconds: 300  # 5 minutes
+  
+  # Minimum number of price samples required before considering arbitrage
+  min_samples: 3  # Need at least 3 price points for each source
+  
+  # DEXes to monitor for price differences
+  price_sources:
+    - "jupiter"    # Jupiter Aggregator
+    - "raydium"    # Raydium AMM
+    - "orca"       # Orca Whirlpools
+    - "openbook"   # OpenBook (Serum v3)
+    - "meteora"    # Meteora AMM
+    - "phoenix"    # Phoenix CLOB
+  
+  # Tokens to monitor for arbitrage opportunities
+  # Focus on tokens with good liquidity across multiple DEXes
+  tokens:
+    - "SOL"   # Native Solana
+    - "USDC"  # USD Coin
+    - "USDT"  # Tether
+    - "ETH"   # Wrapped Ethereum
+    - "RAY"   # Raydium
+    - "ORCA"  # Orca
+    - "MNGO"  # Mango Markets
+    - "SBR"   # Saber
+
+# Price feed configuration
+price_feeds:
+  update_interval: 5  # Seconds between price updates
+  sources:
+    - "jupiter"
+    - "raydium"
+    - "orca"
+    - "openbook"
+
+# Performance settings
+performance:
+  max_price_history: 1000  # Maximum price points to keep in memory
+  max_trade_history: 100   # Maximum trade records to keep
+
+# Logging configuration
+logging:
+  level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR
+  console: true  # Log to console
+  file: true     # Log to file
+  filename: "arbitrage_bot.log"  # Log file name

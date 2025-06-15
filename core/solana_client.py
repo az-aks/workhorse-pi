@@ -204,6 +204,13 @@ class SolanaClient:
     
     async def get_balance(self, token_symbol: str = 'SOL') -> Optional[float]:
         """Get token balance for the wallet."""
+        # Check if we're in paper trading mode
+        if self.config.get('trading', {}).get('mode') == 'paper':
+            # For paper trading, maintain a consistent balance
+            paper_balance = self.config.get('trading', {}).get('paper_balance', 1000.0)
+            self.logger.info(f"Using paper trading balance: {paper_balance} {token_symbol}")
+            return float(paper_balance)
+        
         if not self.client:
             self.logger.warning("Cannot get balance: Solana client not initialized")
             return 0.0  # Return 0 instead of None for better UI display
