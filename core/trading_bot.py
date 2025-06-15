@@ -28,7 +28,8 @@ class TradingBot:
         
         # Trading components
         self.price_feed_manager = PriceFeedManager(config)
-        self.solana_client = SolanaClient(config) if config['trading']['mode'] == 'live' else None
+        # Always create SolanaClient, regardless of mode, for wallet info
+        self.solana_client = SolanaClient(config)
         self.strategy = SimpleStrategy(config)
         
         # Data storage (memory optimized)
@@ -316,3 +317,50 @@ class TradingBot:
         
         uptime = datetime.now() - self._start_time
         return str(uptime).split('.')[0]  # Remove microseconds
+
+    def get_status(self) -> Dict:
+        """Get comprehensive bot status including wallet info."""
+        # Basic status (running, trading)
+        status = "running" if self._running else "stopped"
+        if self._running and self._trading_enabled:
+            status = "trading"
+        elif self._running and not self._trading_enabled:
+            status = "paused"
+        
+        # Trading mode from config
+        trading_mode = self.config.get('trading', {}).get('mode', 'paper') 
+        
+        # Portfolio data
+        self._update_portfolio()
+        portfolio = self._portfolio.copy()
+        
+        # Wallet info
+        wallet_info = self.get_wallet_info()
+        
+        # Return comprehensive status object
+        return {
+            'status': status,
+            'mode': trading_mode,
+            'wallet_info': wallet_info,
+            'portfolio_value': portfolio.get('total_value', 0.0),
+            'total_pnl': portfolio.get('unrealized_pnl', 0.0),
+            'uptime': self.get_uptime() or "0s",
+            'message': f"Bot is {status}",
+            'trading_enabled': self._trading_enabled
+        }
+    
+    def get_wallet_info(self) -> Dict:
+        """Get wallet address and balance."""
+        address = None
+        balance = None
+        
+        # Check if we have a Solana client with a public key
+        if self.solana_client and self.solana_client.public_key:
+            address = str(self.solana_client.public_key)
+            # Balance requires async, cannot get here
+            # We'll handle balance in socketio_events.py's async function
+        
+        return {
+            'address': address,
+            'balance': balance
+        }

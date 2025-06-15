@@ -70,11 +70,49 @@
             font-size: 0.75rem;
             font-weight: 600;
             text-transform: uppercase;
+            margin-left: 0.5rem; /* Add spacing between badges */
         }
         
         .status-running { background: var(--success); color: white; }
         .status-stopped { background: var(--error); color: white; }
         .status-paper { background: var(--warning); color: black; }
+        
+        /* Settings button for mode switching */
+        .settings-btn {
+            background: var(--surface-light);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            cursor: pointer;
+            font-size: 0.75rem;
+            margin-left: 0.5rem;
+            transition: all 0.2s;
+        }
+        
+        .settings-btn:hover {
+            background: var(--border);
+        }
+        
+        /* Wallet info in header */
+        .wallet-info {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-right: 1rem;
+        }
+        
+        .wallet-address {
+            font-family: monospace;
+            font-size: 0.7rem;
+        }
+        
+        .wallet-balance {
+            font-weight: 600;
+            color: var(--primary);
+        }
         
         .grid {
             display: grid;
@@ -201,6 +239,12 @@
             .header-content {
                 flex-direction: column;
                 gap: 1rem;
+                align-items: center;
+            }
+            
+            .wallet-info {
+                align-items: center;
+                margin-right: 0;
             }
             
             .metric-value {
@@ -211,6 +255,14 @@
         @media (max-width: 480px) {
             .grid-cols-4 { grid-template-columns: 1fr; }
             .container { padding: 0.5rem; }
+            
+            .header-content {
+                text-align: center;
+            }
+            
+            .wallet-info {
+                font-size: 0.7rem;
+            }
         }
     </style>
 </head>
@@ -219,9 +271,19 @@
         <div class="container">
             <div class="header-content">
                 <h1>🐎 Workhorse</h1>
-                <div>
+                
+                <!-- Wallet Portfolio Info -->
+                <div class="wallet-info">
+                    <div class="wallet-address" id="wallet-address">Wallet: --</div>
+                    <div class="wallet-balance" id="wallet-balance">Balance: --</div>
+                </div>
+                
+                <!-- Status and Mode Controls -->
+                <div style="display: flex; align-items: center;">
                     <span id="status-badge" class="status-badge status-stopped">Initializing</span>
-                    <span id="mode-badge" class="status-badge status-paper">{{ trading_mode.upper() }}</span>
+                    <button class="settings-btn" onclick="toggleTradingMode()" title="Switch between Paper and MainNet mode">
+                        ⚙️ <span id="mode-text">PAPER</span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -257,11 +319,8 @@
                 </div>
             </div>
             <div style="display: flex; gap: 1rem;">
-                <button id="start-trading" class="btn btn-primary" onclick="startTrading()">
+                <button id="toggle-trading-btn" class="btn btn-primary" onclick="toggleTradingState()">
                     Start Trading
-                </button>
-                <button id="stop-trading" class="btn btn-danger" onclick="stopTrading()">
-                    Stop Trading
                 </button>
                 <button id="refresh-data" class="btn btn-secondary" onclick="refreshData()">
                     Refresh Data
@@ -272,7 +331,10 @@
         <!-- Price Chart -->
         <div class="card">
             <div class="card-header">
-                <h2 class="card-title">SOL Price Chart (1 Hour) • <span style="color: #ef4444;">●</span> Live</h2>
+                <h2 class="card-title" id="chart-title-text">SOL Price Chart (1 Hour)</h2>
+                 <div style="display: flex; align-items: center;">
+                    <span style="color: #ef4444; margin-right: 5px; font-size: 1.5em;">●</span> Live
+                </div>
             </div>
             <div style="height: 300px; padding: 1rem;">
                 <canvas id="priceChart"></canvas>
@@ -359,14 +421,14 @@
                 }
                 console.log('✅ Canvas element found');
                 
-                // Create initial time slots (30 min before and after current time)
                 const currentTime = new Date();
                 const timeSlots = [];
-                for (let i = -6; i <= 6; i++) {
-                    const slotTime = new Date(currentTime.getTime() + (i * 5 * 60 * 1000));
+                // Generate 13 time slots for the last hour (12 intervals) + current time
+                for (let i = 12; i >= 0; i--) { // 12 past 5-min intervals, 1 current
+                    const slotTime = new Date(currentTime.getTime() - (i * 5 * 60 * 1000));
                     timeSlots.push(slotTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}));
                 }
-                console.log('⏰ Time slots created:', timeSlots);
+                console.log('⏰ Initial time slots (1 hour ending now):', timeSlots);
                 
                 priceChart = new Chart(ctx.getContext('2d'), {
                     type: 'line',
@@ -382,15 +444,17 @@
                             tension: 0.4,
                             pointRadius: 3,
                             pointHoverRadius: 5,
-                            spanGaps: true // Connect lines across null values
+                            spanGaps: true
                         }, {
-                            label: 'Current Time',
+                            label: 'Current Price Point', // Will be hidden from legend
                             data: Array(13).fill(null),
                             borderColor: '#ef4444',
                             backgroundColor: '#ef4444',
                             borderWidth: 0,
-                            pointRadius: 8,
-                            pointHoverRadius: 10,
+                            pointRadius: Array(13).fill(0),
+                            pointHoverRadius: Array(13).fill(0),
+                            pointBorderWidth: Array(13).fill(0),
+                            pointBorderColor: '#ffffff',
                             showLine: false,
                             pointStyle: 'circle'
                         }]
@@ -403,7 +467,8 @@
                             labels: {
                                 color: '#ffffff',
                                 filter: function(item) {
-                                    return item.text !== 'Current Time';
+                                    // Only show legend for the first dataset (SOL Price USD)
+                                    return item.datasetIndex === 0;
                                 }
                             }
                         }
@@ -436,137 +501,130 @@
                 }
             });            console.log('📊 Chart created successfully');
             
-            // Initialize with current price if available
-            setTimeout(async function() {
-                try {
-                    const response = await fetch('http://localhost:5001/api/price');
-                    const priceData = await response.json();
-                    if (priceData && priceData.price) {
-                        priceChart.data.datasets[1].data[6] = priceData.price;
-                        priceChart.update('none');
-                        console.log('💰 Initial price set:', priceData.price);
-                    }
-                } catch (error) {
-                    console.log('⚠️ Could not fetch initial price:', error);
-                }
-            }, 500);
+            // REMOVE Initial price fetch from here; updateChart will handle it.
+            // setTimeout(async function() { ... }); 
             
-            // Start the blinking animation for the current time dot
-            startBlinkingDot();
-            console.log('💫 Blinking dot started');
+            // Start the blinking animation for the current time dot (now the last dot)
+            startBlinkingDot(); // Will activate once data[12] is set by updateChart
+            console.log('💫 Blinking dot mechanism started');
             } catch (error) {
                 console.error('❌ Error initializing chart:', error);
             }
         }
         
+        const chartTitleElement = document.getElementById('chart-title-text');
+
         async function updateChart() {
             try {
-                console.log('📈 Updating chart...');
+                console.log('📈 Updating chart (1-hour view ending now)...');
                 if (!priceChart) {
                     console.log('❌ Chart not initialized yet');
                     return;
                 }
                 
-                // Update chart title to show loading
-                const chartTitle = document.querySelector('.card h2.card-title');
-                if (chartTitle && chartTitle.textContent.includes('SOL Price Chart')) {
-                    chartTitle.textContent = 'SOL Price Chart (Loading...)';
+                if (chartTitleElement) {
+                    chartTitleElement.textContent = 'SOL Price Chart (1 Hour - Loading...)';
                 }
                 
-                const response = await fetch('http://localhost:5001/api/price-history?hours=2'); // Get 2 hours to ensure we have enough data
+                const response = await fetch('http://localhost:5001/api/price-history?hours=1.5'); // Fetch 1.5 hours to be safe
                 const rawData = await response.json();
-                console.log('Raw price history data:', rawData); // DEBUG
+                console.log('Raw price history data (for 1hr chart):', rawData);
                 
+                const currentTime = new Date();
+                const newTimeSlots = [];
+                const prices = Array(13).fill(null);
+
+                // Generate 13 time slots for the last hour (12 intervals) + current time interval
+                for (let i = 12; i >= 0; i--) { 
+                    const slotTime = new Date(currentTime.getTime() - (i * 5 * 60 * 1000));
+                    newTimeSlots.push(slotTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}));
+                }
+                console.log('New time slots for chart (1hr ending now):', newTimeSlots);
+
                 if (rawData && rawData.length > 0) {
-                    // Process data into 5-minute intervals
                     const fiveMinData = aggregateToFiveMinutes(rawData);
-                    console.log('Aggregated 5-minute data:', fiveMinData); // DEBUG
-                    
-                    // Create time slots for display (past + future for positioning current dot in middle)
-                    const currentTime = new Date();
-                    const timeSlots = [];
-                    const prices = [];
-                    
-                    // Generate time slots: 30 minutes before current time to 30 minutes after
-                    for (let i = -6; i <= 6; i++) { // 13 slots total (6 before, current, 6 after)
-                        const slotTime = new Date(currentTime.getTime() + (i * 5 * 60 * 1000));
-                        timeSlots.push(slotTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}));
+                    console.log('Aggregated 5-minute data (for 1hr chart):', fiveMinData);
+
+                    // Map aggregated data to the 13 time slots
+                    // The slots are [T-60, T-55, ..., T-5, T]
+                    for (let i = 0; i < 13; i++) {
+                        const targetSlotTime = new Date(currentTime.getTime() - ((12 - i) * 5 * 60 * 1000));
                         
-                        // Find price data for this time slot
                         const matchingData = fiveMinData.find(d => {
                             const dataTime = new Date(d.timestamp);
-                            const timeDiff = Math.abs(dataTime.getTime() - slotTime.getTime());
-                            return timeDiff < 2.5 * 60 * 1000; // Within 2.5 minutes
+                            // Check if dataTime falls into the 5-minute interval ending at targetSlotTime
+                            const intervalEnd = targetSlotTime;
+                            const intervalStart = new Date(targetSlotTime.getTime() - 5 * 60 * 1000);
+                            return dataTime >= intervalStart && dataTime < intervalEnd;
                         });
                         
-                        prices.push(matchingData ? matchingData.price : null);
+                        if (matchingData) {
+                            prices[i] = matchingData.price;
+                        } else if (i === 12) { // For the very last slot (current time)
+                             // Try to get the most recent point if no exact match for the last 5min slot
+                            const latestPoint = fiveMinData.length > 0 ? fiveMinData[fiveMinData.length - 1] : null;
+                            if (latestPoint) {
+                                const latestTime = new Date(latestPoint.timestamp);
+                                // Check if latest point is within the last 5-10 minutes
+                                if (currentTime.getTime() - latestTime.getTime() < 10 * 60 * 1000) {
+                                    prices[i] = latestPoint.price;
+                                }
+                            }
+                        }
                     }
-                    console.log('Time slots for chart:', timeSlots); // DEBUG
-                    console.log('Prices for chart:', prices); // DEBUG
+                    console.log('Prices for 1hr chart:', prices);
                     
-                    // Update chart with new data
-                    priceChart.data.labels = timeSlots;
+                    priceChart.data.labels = newTimeSlots;
                     priceChart.data.datasets[0].data = prices;
                     
-                    // Update current time dot (middle position is index 6)
-                    const currentPrice = getCurrentPrice(fiveMinData);
-                    if (currentPrice !== null) {
-                        priceChart.data.datasets[1].data = Array(13).fill(null);
-                        priceChart.data.datasets[1].data[6] = currentPrice; // Middle position
+                    // Update current time dot (last position is index 12)
+                    const currentPriceForDot = prices[12]; 
+                    priceChart.data.datasets[1].data = Array(13).fill(null);
+                    if (currentPriceForDot !== null) {
+                        priceChart.data.datasets[1].data[12] = currentPriceForDot;
                     }
                     
                     priceChart.update('none');
-                    
-                    // Update chart title
                     if (chartTitleElement) {
-                        chartTitleElement.textContent = `SOL Price Chart (5min intervals) • Live`;
+                        chartTitleElement.textContent = 'SOL Price Chart (1 Hour)';
                     }
-                    
-                    console.log(`Chart updated with 5-minute interval data`);
+                    console.log(`Chart updated with 1-hour data ending now.`);
+
                 } else {
-                    console.warn('No price history data, trying current price...');
+                    console.warn('No price history data for 1hr chart, trying current price...');
                     try {
                         const priceResponse = await fetch('http://localhost:5001/api/price');
-                        const priceData = await priceResponse.json(); // Error: Should be priceResponse.json()
+                        const priceData = await priceResponse.json();
                         if (priceData && priceData.price) {
-                            const currentTime = new Date();
-                            const timeSlots = [];
-                            const prices = Array(13).fill(null);
-                            
-                            for (let i = -6; i <= 6; i++) {
-                                const slotTime = new Date(currentTime.getTime() + (i * 5 * 60 * 1000));
-                                timeSlots.push(slotTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}));
-                            }
-                            prices[6] = priceData.price; // Place current price in the middle
+                            prices[12] = priceData.price; // Place current price at the end
 
-                            priceChart.data.labels = timeSlots;
-                            priceChart.data.datasets[0].data = prices;
+                            priceChart.data.labels = newTimeSlots;
+                            priceChart.data.datasets[0].data = prices; // prices array is mostly null except last point
                             priceChart.data.datasets[1].data = Array(13).fill(null);
-                            priceChart.data.datasets[1].data[6] = priceData.price;
+                            priceChart.data.datasets[1].data[12] = priceData.price;
                             priceChart.update('none');
 
-                            if (chartTitleElement) { // Use the correctly defined chartTitleElement
+                            if (chartTitleElement) {
                                 chartTitleElement.textContent = 'SOL Price Chart (Current Price Only)';
                             }
-                            console.log('Chart updated with current price');
+                            console.log('Chart updated with current price at the end');
                         } else {
-                            console.warn('Fallback price fetch did not return a valid price.');
+                            console.warn('Fallback price fetch did not return a valid price for 1hr chart.');
                             if (chartTitleElement) {
                                 chartTitleElement.textContent = 'SOL Price Chart (No Data)';
                             }
                         }
                     } catch (fallbackError) {
-                        console.error('Failed to get current price as fallback:', fallbackError);
+                        console.error('Failed to get current price as fallback for 1hr chart:', fallbackError);
                         if (chartTitleElement) {
                             chartTitleElement.textContent = 'SOL Price Chart (Error Fetching Price)';
                         }
                     }
                 }
             } catch (error) {
-                console.error('Error updating chart:', error);
-                const currentChartTitleElement = document.getElementById('priceChart').closest('.card').querySelector('.card-title');
-                if (currentChartTitleElement && currentChartTitleElement.textContent.includes('SOL Price Chart')) {
-                    currentChartTitleElement.textContent = 'SOL Price Chart (Error)';
+                console.error('Error updating 1hr chart:', error);
+                if (chartTitleElement) {
+                    chartTitleElement.textContent = 'SOL Price Chart (Error)';
                 }
             }
         }
@@ -575,13 +633,15 @@
         function aggregateToFiveMinutes(rawData) {
             const fiveMinData = [];
             const grouped = {};
-            // console.log('Raw data input to aggregateToFiveMinutes:', rawData); // DEBUG - Redundant, logged in updateChart
 
             rawData.forEach(point => {
                 const time = new Date(point.timestamp);
-                // Round down to nearest 5-minute
-                const key = new Date(Math.floor(time.getTime() / (5 * 60 * 1000)) * (5 * 60 * 1000)).toISOString();
+                // Round down to nearest 5-minute mark
+                const roundedMinutes = Math.floor(time.getMinutes() / 5) * 5;
+                const roundedTime = new Date(time);
+                roundedTime.setMinutes(roundedMinutes, 0, 0); // Set seconds and milliseconds to 0
                 
+                const key = roundedTime.toISOString();
                 if (!grouped[key]) {
                     grouped[key] = {
                         timestamp: key,
@@ -591,7 +651,6 @@
                 }
                 grouped[key].prices.push(point.price);
             });
-            // console.log('Grouped data in aggregateToFiveMinutes:', grouped); // DEBUG - Can be verbose, let's see fiveMinData first
 
             // Calculate average price for each 5-minute interval
             Object.values(grouped).forEach(group => {
@@ -621,180 +680,286 @@
         
         // Blinking dot functionality
         let blinkingDotVisible = true;
+        let blinkingInterval;
         
         function startBlinkingDot() {
-            setInterval(function() {
-                if (!priceChart || !priceChart.data.datasets[1]) return;
+            // Clear any existing interval
+            if (blinkingInterval) {
+                clearInterval(blinkingInterval);
+            }
+            
+            blinkingInterval = setInterval(function() {
+                if (!priceChart || !priceChart.data.datasets[1] || priceChart.data.datasets[1].data[12] === null) return;
                 
-                // Toggle the visibility of the current time dot (middle position)
                 blinkingDotVisible = !blinkingDotVisible;
                 const currentTimeDataset = priceChart.data.datasets[1];
                 
+                // Initialize pointRadius/HoverRadius/BorderWidth if not already arrays of correct length
+                // This ensures we don't error if they were somehow not initialized as arrays of 13 items
+                if (!Array.isArray(currentTimeDataset.pointRadius) || currentTimeDataset.pointRadius.length !== 13) {
+                    currentTimeDataset.pointRadius = Array(13).fill(0);
+                }
+                if (!Array.isArray(currentTimeDataset.pointHoverRadius) || currentTimeDataset.pointHoverRadius.length !== 13) {
+                    currentTimeDataset.pointHoverRadius = Array(13).fill(0);
+                }
+                if (!Array.isArray(currentTimeDataset.pointBorderWidth) || currentTimeDataset.pointBorderWidth.length !== 13) {
+                    currentTimeDataset.pointBorderWidth = Array(13).fill(0);
+                }
+
+                // Reset all points except the last one
+                for (let i = 0; i < 12; i++) {
+                    currentTimeDataset.pointRadius[i] = 0;
+                    currentTimeDataset.pointHoverRadius[i] = 0;
+                    currentTimeDataset.pointBorderWidth[i] = 0;
+                }
+                
                 if (blinkingDotVisible) {
-                    currentTimeDataset.pointRadius = 10;
-                    currentTimeDataset.backgroundColor = '#ef4444';
-                    currentTimeDataset.borderColor = '#ffffff';
-                    currentTimeDataset.borderWidth = 2;
+                    currentTimeDataset.pointRadius[12] = 12; // Last point prominent
+                    currentTimeDataset.pointHoverRadius[12] = 15;
+                    currentTimeDataset.pointBorderWidth[12] = 3;
                 } else {
-                    currentTimeDataset.pointRadius = 6;
-                    currentTimeDataset.backgroundColor = 'rgba(239, 68, 68, 0.4)';
-                    currentTimeDataset.borderColor = 'rgba(255, 255, 255, 0.6)';
-                    currentTimeDataset.borderWidth = 1;
+                    currentTimeDataset.pointRadius[12] = 8;  // Last point smaller/dimmer
+                    currentTimeDataset.pointHoverRadius[12] = 10;
+                    currentTimeDataset.pointBorderWidth[12] = 1;
                 }
                 
                 priceChart.update('none');
-            }, 800); // Blink every 0.8 seconds
+            }, 600); // Blink every 0.6 seconds
         }
         
         function updateCurrentTimeDot() {
             if (!priceChart) return;
+            // This function might be less relevant now as updateChart handles the dot's Y value.
+            // The blinking is continuous via startBlinkingDot.
+            // We just need to ensure its Y value is correct, which updateChart does.
+            const currentPriceDataset = priceChart.data.datasets[0];
+            const blinkingDotDataset = priceChart.data.datasets[1];
 
-            // The current time dot is always at the middle position (index 6)
-            // This function is called when new price data comes in via WebSocket
-            const currentTimeDataset = priceChart.data.datasets[1];
-            if (currentTimeDataset.data[6]) {
-                // Current time dot is already positioned, no need to move it
-                // The blinking animation will continue automatically
+            if (currentPriceDataset.data.length === 13 && blinkingDotDataset.data.length === 13) {
+                const lastPrice = currentPriceDataset.data[12];
+                if (lastPrice !== null) {
+                    blinkingDotDataset.data[12] = lastPrice;
+                } else {
+                    // If last price is null, keep dot null or try to find previous non-null
+                    // For simplicity, if main line has no data at last point, dot also has no data.
+                    blinkingDotDataset.data[12] = null;
+                }
+            }
+            // priceChart.update('none'); // Potentially redundant if updateChart already called it
+        }
+
+        // Trading mode toggle
+        let currentMode = 'paper'; // Default to paper mode
+        
+        function toggleTradingMode() {
+            currentMode = currentMode === 'paper' ? 'mainnet' : 'paper';
+            const modeText = document.getElementById('mode-text');
+            const settingsBtn = document.querySelector('.settings-btn');
+            
+            if (currentMode === 'mainnet') {
+                modeText.textContent = 'MAINNET';
+                settingsBtn.style.background = 'var(--error)';
+                settingsBtn.style.color = 'white';
+                settingsBtn.style.borderColor = 'var(--error)';
+            } else {
+                modeText.textContent = 'PAPER';
+                settingsBtn.style.background = 'var(--surface-light)';
+                settingsBtn.style.color = 'var(--text)';
+                settingsBtn.style.borderColor = 'var(--border)';
+            }
+            
+            console.log('Trading mode switched to:', currentMode.toUpperCase());
+            
+            // Here you would typically send the mode change to the backend
+            // fetch('/api/trading/mode', {
+            //     method: 'POST',
+            //     headers: { 'Content-Type': 'application/json' },
+            //     body: JSON.stringify({ mode: currentMode })
+            // });
+        }
+        
+        window.toggleTradingState = toggleTradingState; // Expose main control function
+        
+        // Request initial data function
+        function requestUpdate() {
+            if (typeof socket !== 'undefined' && socket.connected) {
+                console.log('🚀 Emitting request_update');
+                socket.emit('request_update');
             }
         }
 
+        let isTradingActive = false;
+        const toggleTradingBtn = document.getElementById('toggle-trading-btn');
+        const statusBadge = document.getElementById('status-badge');
+
+        function startTrading() {
+            console.log('▶️ Attempting to start trading...');
+            if (typeof socket !== 'undefined' && socket.connected) {
+                socket.emit('start_trading');
+                // Optimistically update UI, backend will confirm
+                // updateTradingStatus(true, 'Starting...'); 
+                // Let backend confirm status via 'status_update' or specific ack
+            } else {
+                console.error('❌ Socket not connected, cannot start trading.');
+                alert('Not connected to server. Cannot start trading.');
+            }
+        }
+
+        function stopTrading() {
+            console.log('🛑 Attempting to stop trading...');
+            if (typeof socket !== 'undefined' && socket.connected) {
+                socket.emit('stop_trading');
+                // Optimistically update UI, backend will confirm
+                // updateTradingStatus(false, 'Stopping...');
+            } else {
+                console.error('❌ Socket not connected, cannot stop trading.');
+                alert('Not connected to server. Cannot stop trading.');
+            }
+        }
+
+        function toggleTradingState() {
+            if (isTradingActive) {
+                stopTrading();
+            } else {
+                startTrading();
+            }
+        }
+
+        function updateTradingStatus(isActive, currentStatusText = null) {
+            isTradingActive = isActive;
+            if (toggleTradingBtn) {
+                if (isTradingActive) {
+                    toggleTradingBtn.textContent = 'Stop Trading';
+                    toggleTradingBtn.classList.remove('btn-primary');
+                    toggleTradingBtn.classList.add('btn-danger');
+                } else {
+                    toggleTradingBtn.textContent = 'Start Trading';
+                    toggleTradingBtn.classList.remove('btn-danger');
+                    toggleTradingBtn.classList.add('btn-primary');
+                }
+            }
+            if (statusBadge) {
+                if (currentStatusText) {
+                     statusBadge.textContent = currentStatusText;
+                     // Class will be updated by general status update from backend
+                } else {
+                    statusBadge.textContent = isTradingActive ? 'Running' : 'Stopped';
+                    statusBadge.className = 'status-badge '; // Reset classes
+                    statusBadge.classList.add(isTradingActive ? 'status-running' : 'status-stopped');
+                }
+            }
+            console.log(`Trading status updated: Active = ${isTradingActive}, Badge = ${statusBadge.textContent}`);
+        }
+        
         // Initialize Socket.IO connection
-        const socket = io();
-        
-        // Connection status
-        socket.on('connect', function() {
-            document.getElementById('connection-status').innerHTML = 
-                '<span style="color: var(--success);">● Connected</span>';
-            requestUpdate();
+        var socket = io('http://localhost:5001', {
+            transports: ['websocket'] // Force WebSocket transport
+        });
+
+        socket.on('connect', () => {
+            console.log('🔗 Socket.IO connected!');
+            document.getElementById('connection-status').innerHTML = '<span style=\"color: var(--success);\">●</span> Connected';
+            requestUpdate(); // Request initial data (including wallet and trading status)
         });
         
-        socket.on('disconnect', function() {
-            document.getElementById('connection-status').innerHTML = 
-                '<span style="color: var(--error);">● Disconnected</span>';
+        socket.on('disconnect', () => {
+            console.log('🔌 Socket.IO disconnected!');
+            document.getElementById('connection-status').innerHTML = '<span style=\"color: var(--error);\">●</span> Disconnected';
+            updateTradingStatus(false, 'Disconnected'); // Assume trading stops if disconnected
+            statusBadge.className = 'status-badge status-stopped';
         });
         
-        // Real-time updates
+        socket.on('connect_error', (err) => {
+            console.error('🔗 Socket.IO connection error:', err);
+            document.getElementById('connection-status').innerHTML = '<span style=\"color: var(--error);\">●</span> Connection Failed';
+            updateTradingStatus(false, 'Error');
+            statusBadge.className = 'status-badge status-stopped';
+        });
+
         socket.on('price_update', function(data) {
-            updatePrice(data);
-        });
-        
-        socket.on('portfolio_update', function(data) {
-            updatePortfolio(data);
-        });
-        
-        socket.on('trades_update', function(data) {
-            updateTrades(data);
-        });
-        
-        socket.on('trade_executed', function(data) {
-            addTradeToTable(data);
-            // Request fresh portfolio data
-            requestUpdate();
+            console.log('📈 Received price_update:', data);
+            if (data && data.price) {
+                document.getElementById('current-price').textContent = `$${parseFloat(data.price).toFixed(2)}`;
+                
+                // Update the chart's last point if it's a live update
+                if (priceChart && priceChart.data.datasets[0].data.length === 13) {
+                    const prices = priceChart.data.datasets[0].data;
+                    prices[12] = parseFloat(data.price);
+                    priceChart.data.datasets[0].data = prices;
+
+                    // Also update the blinking dot's Y value
+                    priceChart.data.datasets[1].data[12] = parseFloat(data.price);
+                    
+                    // Shift data if needed or just update last point and labels
+                    // For simplicity, we'll rely on the periodic updateChart for full history refresh
+                    // and this just updates the very latest price point.
+                    // To make the chart scroll, we would shift labels and data here.
+                    // For now, let's ensure the last label reflects current time if it's a new minute.
+                    const lastLabel = priceChart.data.labels[12];
+                    const currentMinuteLabel = new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+                    if (lastLabel !== currentMinuteLabel) {
+                        // If the minute has changed, it's better to call updateChart for a full refresh
+                        // to correctly realign all time slots.
+                        // However, a quick update to the last label can be done:
+                        // priceChart.data.labels[12] = currentMinuteLabel;
+                        // priceChart.data.labels.shift();
+                        // priceChart.data.labels.push(currentMinuteLabel);
+                        // priceChart.data.datasets[0].data.shift();
+                        // priceChart.data.datasets[0].data.push(parseFloat(data.price));
+                        // priceChart.data.datasets[1].data.shift();
+                        // priceChart.data.datasets[1].data.push(parseFloat(data.price));
+                        // For now, let updateChart handle the time progression to keep it simpler.
+                    }
+                    priceChart.update('none');
+                }
+            }
         });
         
         socket.on('status_update', function(data) {
-            updateStatus(data);
-        });
-        
-        // Request initial data
-        function requestUpdate() {
-            socket.emit('request_update');
-        }
-        
-        // Update functions
-        function updatePrice(data) {
-            if (data && data.price) {
-                document.getElementById('current-price').textContent = 
-                    '$' + parseFloat(data.price).toFixed(4);
-                
-                // Update the current time dot position (middle position = index 6)
-                if (priceChart && priceChart.data.datasets[1]) {
-                    priceChart.data.datasets[1].data = Array(13).fill(null);
-                    priceChart.data.datasets[1].data[6] = data.price; // Middle position
-                    priceChart.update('none');
-                }
-                
-                // Update chart every 20 price updates to avoid too frequent refreshes
-                if (!window.chartUpdateCounter) window.chartUpdateCounter = 0;
-                window.chartUpdateCounter++;
-                if (window.chartUpdateCounter % 20 === 0) {  // Update every 20th price update
-                    updateChart();
+            console.log('ℹ️ Received status_update data from backend:', data); // Log the whole data object
+
+            if (data.status) {
+                const isActive = data.status.toLowerCase() === 'running';
+                updateTradingStatus(isActive, data.status);
+            }
+            if (data.mode) {
+                currentMode = data.mode.toLowerCase();
+                const modeText = document.getElementById('mode-text');
+                const settingsBtn = document.querySelector('.settings-btn');
+                if (currentMode === 'mainnet') {
+                    modeText.textContent = 'MAINNET';
+                    settingsBtn.style.background = 'var(--error)';
+                    settingsBtn.style.color = 'white';
+                    settingsBtn.style.borderColor = 'var(--error)';
+                } else {
+                    modeText.textContent = 'PAPER';
+                    settingsBtn.style.background = 'var(--surface-light)';
+                    settingsBtn.style.color = 'var(--text)';
+                    settingsBtn.style.borderColor = 'var(--border)';
                 }
             }
-        }
-        
-        function updatePortfolio(data) {
-            if (!data) return;
-            
-            document.getElementById('usd-balance').textContent = 
-                '$' + parseFloat(data.balance_usd || 0).toFixed(2);
-            document.getElementById('sol-balance').textContent = 
-                parseFloat(data.balance_token || 0).toFixed(6) + ' SOL';
-            document.getElementById('total-value').textContent = 
-                '$' + parseFloat(data.total_value || 0).toFixed(2);
-            document.getElementById('portfolio-value').textContent = 
-                '$' + parseFloat(data.total_value || 0).toFixed(2);
-            
-            const pnl = parseFloat(data.unrealized_pnl || 0);
-            const pnlElement = document.getElementById('unrealized-pnl');
-            const totalPnlElement = document.getElementById('total-pnl');
-
-            // Revised pnlText line for clarity and to avoid potential hidden character issues
-            let pnlPrefix = pnl >= 0 ? '+' : '-';
-            const pnlText = pnlPrefix + '$' + Math.abs(pnl).toFixed(2);
-            const pnlClass = pnl >= 0 ? 'text-success' : 'text-error';
-
-            pnlElement.textContent = pnlText;
-            pnlElement.className = pnlClass;
-            totalPnlElement.textContent = pnlText; // Ensure this line is not causing issues, it was fine before.
-            totalPnlElement.className = pnlClass;
-        }
-        
-        function updateTrades(trades) {
-            if (!trades || trades.length === 0) return;
-            
-            const tbody = document.getElementById('trades-table');
-            tbody.innerHTML = '';
-            
-            trades.slice(-10).reverse().forEach(trade => {
-                addTradeToTable(trade);
-            });
-        }
-        
-        function addTradeToTable(trade) {
-            const tbody = document.getElementById('trades-table');
-            const row = tbody.insertRow(0); // Insert at top
-            
-            const time = new Date(trade.timestamp).toLocaleTimeString();
-            const action = trade.action.toUpperCase();
-            const amount = parseFloat(trade.amount_token || 0).toFixed(6);
-            const price = '$' + parseFloat(trade.price || 0).toFixed(4);
-            
-            row.innerHTML = 
-                '<td>' + time + '</td>' +
-                '<td><span class="' + (trade.action === 'buy' ? 'text-success' : 'text-error') + '">' + action + '</span></td>' +
-                '<td>' + amount + ' SOL</td>' +
-                '<td>' + price + '</td>';
-            
-            // Keep only last 10 trades
-            while (tbody.rows.length > 10) {
-                tbody.deleteRow(-1);
+            // Update other status elements as needed
+            if (data.portfolio_value) {
+                document.getElementById('portfolio-value').textContent = `$${parseFloat(data.portfolio_value).toFixed(2)}`;
             }
-        }
-        
-        function updateStatus(data) {
-            const badge = document.getElementById('status-badge');
-            if (data.status === 'running') {
-                badge.textContent = 'Running';
-                badge.className = 'status-badge status-running';
-            } else if (data.status === 'trading') {
-                badge.textContent = 'Trading';
-                badge.className = 'status-badge status-running';
+            if (data.total_pnl) {
+                document.getElementById('total-pnl').textContent = `$${parseFloat(data.total_pnl).toFixed(2)}`;
+            }
+            if (data.uptime) {
+                document.getElementById('uptime').textContent = data.uptime;
+            }
+            
+            if (data.wallet_info) {
+                console.log('Wallet info received from backend via status_update:', data.wallet_info); // Specifically log wallet_info
+                updateWalletInfo(data.wallet_info);
             } else {
-                badge.textContent = 'Stopped';
-                badge.className = 'status-badge status-stopped';
+                console.log('No wallet_info in received status_update data.');
             }
-        }
+        });
+
+        socket.on('trade_update', function(trade) {
+            // Handle trade updates if needed
+        });
         
         // Trading controls
         async function startTrading() {
@@ -853,31 +1018,71 @@
         // Update chart every 2 minutes
         setInterval(updateChart, 120000);
         
-        // Initial load
+        // DOMContentLoaded event listener
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('🚀 DOM Content Loaded - Starting initialization...');
-            console.log('📍 Chart.js available:', typeof Chart !== 'undefined');
-            console.log('🎮 Functions available:', {
-                startTrading: typeof startTrading !== 'undefined',
-                stopTrading: typeof stopTrading !== 'undefined', 
-                refreshData: typeof refreshData !== 'undefined'
-            });
+            console.log('🎉 DOM fully loaded and parsed');
+            initChart();
+            updateChart(); // Initial call to fetch chart data (history and current)
             
-            initChart();  // Initialize the chart first
-            setTimeout(requestUpdate, 500); // Give socket time to connect
-            setTimeout(updateChart, 800); // Load chart data quickly
+            // Set up periodic updates for the chart
+            setInterval(updateChart, 60 * 1000); // Update chart every 60 seconds
             
-            // Load chart data immediately if socket is slow
-            setTimeout(function() {
-                console.log('⏱️ Checking chart state after delay...');
-                if (!priceChart || !priceChart.data.labels.length) {
-                    console.log('🔄 Chart needs data, calling updateChart...');
-                    updateChart();
-                } else {
-                    console.log('✅ Chart already has data');
-                }
-            }, 1500);
+            // Initial call to set button state correctly
+            updateTradingStatus(isTradingActive);
         });
+        
+        // Update wallet information
+        function updateWalletInfo(walletData) {
+            console.log('updateWalletInfo function called with:', walletData); // Log what the function receives
+            if (!walletData) {
+                console.error('updateWalletInfo called with no data or null/undefined walletData.');
+                // Optionally, clear the fields or set to default
+                document.getElementById('wallet-address').textContent = 'Wallet: --';
+                document.getElementById('wallet-balance').textContent = 'Balance: --';
+                return;
+            }
+            
+            const walletAddressEl = document.getElementById('wallet-address');
+            const walletBalanceEl = document.getElementById('wallet-balance');
+            
+            if (walletData.address) {
+                const truncatedAddress = walletData.address.slice(0, 4) + '...' + walletData.address.slice(-4);
+                walletAddressEl.textContent = `Wallet: ${truncatedAddress}`;
+            } else {
+                walletAddressEl.textContent = 'Wallet: Not available';
+                console.log('Wallet address missing in walletData');
+            }
+            
+            // Log raw balance info for debugging
+            console.log('Raw wallet balance data:', walletData.balance, 'typeof:', typeof walletData.balance);
+            
+            if (walletData.balance !== undefined && walletData.balance !== null) {
+                try {
+                    // Handle various formats: string, number, etc.
+                    const balance = parseFloat(walletData.balance);
+                    
+                    if (!isNaN(balance)) {
+                        if (balance === 0 || balance === 0.0) {
+                            // Handle empty wallet case more gracefully
+                            walletBalanceEl.textContent = `Balance: 0 SOL (Empty wallet)`;
+                            console.log('Wallet has zero balance (empty wallet)');
+                        } else {
+                            walletBalanceEl.textContent = `Balance: ${balance.toFixed(4)} SOL`;
+                            console.log(`Formatted wallet balance: ${balance.toFixed(4)} SOL`);
+                        }
+                    } else {
+                        walletBalanceEl.textContent = 'Balance: Format error';
+                        console.error('Balance parsed to NaN:', walletData.balance);
+                    }
+                } catch (e) {
+                    console.error('Error parsing balance:', e, 'Raw value:', walletData.balance);
+                    walletBalanceEl.textContent = 'Balance: Parse error';
+                }
+            } else {
+                walletBalanceEl.textContent = 'Balance: 0 SOL (Empty wallet)';
+                console.log('Wallet balance missing or null - treating as empty wallet');
+            }
+        }
     </script>
 </body>
 </html>
