@@ -1,0 +1,27 @@
+# Core dependencies
+flask>=2.3.3
+flask-socketio>=5.3.6
+python-socketio>=5.9.0
+
+# Solana blockchain
+solana>=0.30.2
+solders>=0.18.1
+base58>=2.1.0
+
+# Data handling
+pandas>=2.0.0
+numpy>=1.24.0
+pyyaml>=6.0.0
+
+# HTTP/WebSocket
+requests>=2.31.0
+websockets>=11.0.0
+aiohttp>=3.9.0
+
+# Utilities
+python-dotenv>=1.0.0
+schedule>=1.2.0
+
+# Optional (for advanced features)
+ta>=0.10.0  # Technical analysis
+plotly>=5.17.0  # Lightweight charts

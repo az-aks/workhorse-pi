@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workhorse - Solana Trading Bot</title>
+    
+    <!-- Chart.js Library -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+    
+    <!-- CSS -->
+    <style>
+        :root {
+            --primary: #14f195;
+            --primary-dark: #00d182;
+            --secondary: #8b5cf6;
+            --background: #0f0f23;
+            --surface: #1a1a3e;
+            --surface-light: #242454;
+            --text: #ffffff;
+            --text-muted: #a0a0b8;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --border: #2d2d5f;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--background);
+            color: var(--text);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+        
+        header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 0;
+            margin-bottom: 2rem;
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-running { background: var(--success); color: white; }
+        .status-stopped { background: var(--error); color: white; }
+        .status-paper { background: var(--warning); color: black; }
+        
+        .grid {
+            display: grid;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .grid-cols-1 { grid-template-columns: 1fr; }
+        .grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
+        .grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
+        .grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
+        
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .card-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+        
+        .metric {
+            text-align: center;
+        }
+        
+        .metric-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        
+        .metric-label {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+        
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 0.25rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-primary {
+            background: var(--primary);
+            color: var(--background);
+        }
+        
+        .btn-primary:hover {
+            background: var(--primary-dark);
+        }
+        
+        .btn-secondary {
+            background: var(--surface-light);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        
+        .btn-danger {
+            background: var(--error);
+            color: white;
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .table th,
+        .table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .table th {
+            font-weight: 600;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+        
+        .text-success { color: var(--success); }
+        .text-error { color: var(--error); }
+        .text-warning { color: var(--warning); }
+        .text-muted { color: var(--text-muted); }
+        
+        .loading {
+            display: inline-block;
+            width: 1rem;
+            height: 1rem;
+            border: 2px solid var(--border);
+            border-top: 2px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .chart-container {
+            height: 300px;
+            margin-top: 1rem;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .grid-cols-2 { grid-template-columns: 1fr; }
+            .grid-cols-3 { grid-template-columns: 1fr; }
+            .grid-cols-4 { grid-template-columns: repeat(2, 1fr); }
+            
+            .header-content {
+                flex-direction: column;
+                gap: 1rem;
+            }
+            
+            .metric-value {
+                font-size: 1.5rem;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .grid-cols-4 { grid-template-columns: 1fr; }
+            .container { padding: 0.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="header-content">
+                <h1>🐎 Workhorse</h1>
+                <div>
+                    <span id="status-badge" class="status-badge status-stopped">Initializing</span>
+                    <span id="mode-badge" class="status-badge status-paper">{{ trading_mode.upper() }}</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Key Metrics -->
+        <div class="grid grid-cols-4">
+            <div class="card metric">
+                <div class="metric-value" id="current-price">--</div>
+                <div class="metric-label">SOL Price</div>
+            </div>
+            <div class="card metric">
+                <div class="metric-value" id="portfolio-value">--</div>
+                <div class="metric-label">Portfolio Value</div>
+            </div>
+            <div class="card metric">
+                <div class="metric-value" id="total-pnl">--</div>
+                <div class="metric-label">Total P&L</div>
+            </div>
+            <div class="card metric">
+                <div class="metric-value" id="uptime">--</div>
+                <div class="metric-label">Uptime</div>
+            </div>
+        </div>
+
+        <!-- Trading Controls -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Trading Controls</h2>
+                <div id="connection-status" class="text-muted">
+                    <span class="loading"></span> Connecting...
+                </div>
+            </div>
+            <div style="display: flex; gap: 1rem;">
+                <button id="start-trading" class="btn btn-primary" onclick="startTrading()">
+                    Start Trading
+                </button>
+                <button id="stop-trading" class="btn btn-danger" onclick="stopTrading()">
+                    Stop Trading
+                </button>
+                <button id="refresh-data" class="btn btn-secondary" onclick="refreshData()">
+                    Refresh Data
+                </button>
+            </div>
+        </div>
+
+        <!-- Price Chart -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">SOL Price Chart (1 Hour) • <span style="color: #ef4444;">●</span> Live</h2>
+            </div>
+            <div style="height: 300px; padding: 1rem;">
+                <canvas id="priceChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Portfolio & Recent Trades -->
+        <div class="grid grid-cols-2">
+            <!-- Portfolio -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Portfolio</h2>
+                </div>
+                <table class="table">
+                    <tbody>
+                        <tr>
+                            <td>USD Balance</td>
+                            <td id="usd-balance">--</td>
+                        </tr>
+                        <tr>
+                            <td>SOL Balance</td>
+                            <td id="sol-balance">--</td>
+                        </tr>
+                        <tr>
+                            <td>Total Value</td>
+                            <td id="total-value">--</td>
+                        </tr>
+                        <tr>
+                            <td>Unrealized P&L</td>
+                            <td id="unrealized-pnl">--</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Recent Trades -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Recent Trades</h2>
+                </div>
+                <div style="max-height: 200px; overflow-y: auto;">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Action</th>
+                                <th>Amount</th>
+                                <th>Price</th>
+                            </tr>
+                        </thead>
+                        <tbody id="trades-table">
+                            <tr>
+                                <td colspan="4" class="text-muted text-center">No trades yet</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+
+    </div>
+
+    <!-- Socket.IO -->
+    <!-- JavaScript Libraries -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    
+    <script>
+        // Error handling
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            console.error('JavaScript Error:', msg, 'at', url + ':' + lineNo + ':' + columnNo);
+            return false;
+        };
+        
+        // Initialize Chart
+        let priceChart;
+        function initChart() {
+            try {
+                console.log('🎯 Initializing chart...');
+                const ctx = document.getElementById('priceChart');
+                if (!ctx) {
+                    console.error('❌ Chart canvas element not found');
+                    return;
+                }
+                console.log('✅ Canvas element found');
+                
+                // Create initial time slots (30 min before and after current time)
+                const currentTime = new Date();
+                const timeSlots = [];
+                for (let i = -6; i <= 6; i++) {
+                    const slotTime = new Date(currentTime.getTime() + (i * 5 * 60 * 1000));
+                    timeSlots.push(slotTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}));
+                }
+                console.log('⏰ Time slots created:', timeSlots);
+                
+                priceChart = new Chart(ctx.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: timeSlots,
+                        datasets: [{
+                            label: 'SOL Price (USD)',
+                            data: Array(13).fill(null), // 13 null values for 13 time slots
+                            borderColor: '#14f195',
+                            backgroundColor: 'rgba(20, 241, 149, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            spanGaps: true // Connect lines across null values
+                        }, {
+                            label: 'Current Time',
+                            data: Array(13).fill(null),
+                            borderColor: '#ef4444',
+                            backgroundColor: '#ef4444',
+                            borderWidth: 0,
+                            pointRadius: 8,
+                            pointHoverRadius: 10,
+                            showLine: false,
+                            pointStyle: 'circle'
+                        }]
+                    },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#ffffff',
+                                filter: function(item) {
+                                    return item.text !== 'Current Time';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: {
+                                color: '#a0a0b8'
+                            },
+                            grid: {
+                                color: '#2d2d5f',
+                                lineWidth: 1
+                            }
+                        },
+                        y: {
+                            ticks: {
+                                color: '#a0a0b8',
+                                callback: function(value) {
+                                    return '$' + value.toFixed(2);
+                                }
+                            },
+                            grid: {
+                                color: '#2d2d5f'
+                            }
+                        }
+                    },
+                    animation: {
+                        duration: 0
+                    }
+                }
+            });            console.log('📊 Chart created successfully');
+            
+            // Initialize with current price if available
+            setTimeout(async function() {
+                try {
+                    const response = await fetch('http://localhost:5001/api/price');
+                    const priceData = await response.json();
+                    if (priceData && priceData.price) {
+                        priceChart.data.datasets[1].data[6] = priceData.price;
+                        priceChart.update('none');
+                        console.log('💰 Initial price set:', priceData.price);
+                    }
+                } catch (error) {
+                    console.log('⚠️ Could not fetch initial price:', error);
+                }
+            }, 500);
+            
+            // Start the blinking animation for the current time dot
+            startBlinkingDot();
+            console.log('💫 Blinking dot started');
+            } catch (error) {
+                console.error('❌ Error initializing chart:', error);
+            }
+        }
+        
+        async function updateChart() {
+            try {
+                console.log('📈 Updating chart...');
+                if (!priceChart) {
+                    console.log('❌ Chart not initialized yet');
+                    return;
+                }
+                
+                // Update chart title to show loading
+                const chartTitle = document.querySelector('.card h2.card-title');
+                if (chartTitle && chartTitle.textContent.includes('SOL Price Chart')) {
+                    chartTitle.textContent = 'SOL Price Chart (Loading...)';
+                }
+                
+                const response = await fetch('http://localhost:5001/api/price-history?hours=2'); // Get 2 hours to ensure we have enough data
+                const rawData = await response.json();
+                console.log('Raw price history data:', rawData); // DEBUG
+                
+                if (rawData && rawData.length > 0) {
+                    // Process data into 5-minute intervals
+                    const fiveMinData = aggregateToFiveMinutes(rawData);
+                    console.log('Aggregated 5-minute data:', fiveMinData); // DEBUG
+                    
+                    // Create time slots for display (past + future for positioning current dot in middle)
+                    const currentTime = new Date();
+                    const timeSlots = [];
+                    const prices = [];
+                    
+                    // Generate time slots: 30 minutes before current time to 30 minutes after
+                    for (let i = -6; i <= 6; i++) { // 13 slots total (6 before, current, 6 after)
+                        const slotTime = new Date(currentTime.getTime() + (i * 5 * 60 * 1000));
+                        timeSlots.push(slotTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}));
+                        
+                        // Find price data for this time slot
+                        const matchingData = fiveMinData.find(d => {
+                            const dataTime = new Date(d.timestamp);
+                            const timeDiff = Math.abs(dataTime.getTime() - slotTime.getTime());
+                            return timeDiff < 2.5 * 60 * 1000; // Within 2.5 minutes
+                        });
+                        
+                        prices.push(matchingData ? matchingData.price : null);
+                    }
+                    console.log('Time slots for chart:', timeSlots); // DEBUG
+                    console.log('Prices for chart:', prices); // DEBUG
+                    
+                    // Update chart with new data
+                    priceChart.data.labels = timeSlots;
+                    priceChart.data.datasets[0].data = prices;
+                    
+                    // Update current time dot (middle position is index 6)
+                    const currentPrice = getCurrentPrice(fiveMinData);
+                    if (currentPrice !== null) {
+                        priceChart.data.datasets[1].data = Array(13).fill(null);
+                        priceChart.data.datasets[1].data[6] = currentPrice; // Middle position
+                    }
+                    
+                    priceChart.update('none');
+                    
+                    // Update chart title
+                    if (chartTitleElement) {
+                        chartTitleElement.textContent = `SOL Price Chart (5min intervals) • Live`;
+                    }
+                    
+                    console.log(`Chart updated with 5-minute interval data`);
+                } else {
+                    console.warn('No price history data, trying current price...');
+                    try {
+                        const priceResponse = await fetch('http://localhost:5001/api/price');
+                        const priceData = await priceResponse.json(); // Error: Should be priceResponse.json()
+                        if (priceData && priceData.price) {
+                            const currentTime = new Date();
+                            const timeSlots = [];
+                            const prices = Array(13).fill(null);
+                            
+                            for (let i = -6; i <= 6; i++) {
+                                const slotTime = new Date(currentTime.getTime() + (i * 5 * 60 * 1000));
+                                timeSlots.push(slotTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}));
+                            }
+                            prices[6] = priceData.price; // Place current price in the middle
+
+                            priceChart.data.labels = timeSlots;
+                            priceChart.data.datasets[0].data = prices;
+                            priceChart.data.datasets[1].data = Array(13).fill(null);
+                            priceChart.data.datasets[1].data[6] = priceData.price;
+                            priceChart.update('none');
+
+                            if (chartTitleElement) { // Use the correctly defined chartTitleElement
+                                chartTitleElement.textContent = 'SOL Price Chart (Current Price Only)';
+                            }
+                            console.log('Chart updated with current price');
+                        } else {
+                            console.warn('Fallback price fetch did not return a valid price.');
+                            if (chartTitleElement) {
+                                chartTitleElement.textContent = 'SOL Price Chart (No Data)';
+                            }
+                        }
+                    } catch (fallbackError) {
+                        console.error('Failed to get current price as fallback:', fallbackError);
+                        if (chartTitleElement) {
+                            chartTitleElement.textContent = 'SOL Price Chart (Error Fetching Price)';
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error updating chart:', error);
+                const currentChartTitleElement = document.getElementById('priceChart').closest('.card').querySelector('.card-title');
+                if (currentChartTitleElement && currentChartTitleElement.textContent.includes('SOL Price Chart')) {
+                    currentChartTitleElement.textContent = 'SOL Price Chart (Error)';
+                }
+            }
+        }
+
+        // Helper function to aggregate data into 5-minute intervals
+        function aggregateToFiveMinutes(rawData) {
+            const fiveMinData = [];
+            const grouped = {};
+            // console.log('Raw data input to aggregateToFiveMinutes:', rawData); // DEBUG - Redundant, logged in updateChart
+
+            rawData.forEach(point => {
+                const time = new Date(point.timestamp);
+                // Round down to nearest 5-minute
+                const key = new Date(Math.floor(time.getTime() / (5 * 60 * 1000)) * (5 * 60 * 1000)).toISOString();
+                
+                if (!grouped[key]) {
+                    grouped[key] = {
+                        timestamp: key,
+                        prices: [],
+                        source: point.source
+                    };
+                }
+                grouped[key].prices.push(point.price);
+            });
+            // console.log('Grouped data in aggregateToFiveMinutes:', grouped); // DEBUG - Can be verbose, let's see fiveMinData first
+
+            // Calculate average price for each 5-minute interval
+            Object.values(grouped).forEach(group => {
+                const avgPrice = group.prices.reduce((sum, price) => sum + price, 0) / group.prices.length;
+                fiveMinData.push({
+                    timestamp: group.timestamp,
+                    price: avgPrice,
+                    source: group.source
+                });
+            });
+            
+            console.log('Result of aggregateToFiveMinutes (before sort):', JSON.parse(JSON.stringify(fiveMinData))); // DEBUG
+            const sortedData = fiveMinData.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            console.log('Result of aggregateToFiveMinutes (after sort):', sortedData); // DEBUG
+            return sortedData;
+        }
+        
+        // Helper function to get current price from aggregated data
+        function getCurrentPrice(fiveMinData) {
+            if (!fiveMinData.length) return null;
+            
+            const now = new Date();
+            // Find the most recent data point
+            const sorted = fiveMinData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            return sorted[0].price;
+        }
+        
+        // Blinking dot functionality
+        let blinkingDotVisible = true;
+        
+        function startBlinkingDot() {
+            setInterval(function() {
+                if (!priceChart || !priceChart.data.datasets[1]) return;
+                
+                // Toggle the visibility of the current time dot (middle position)
+                blinkingDotVisible = !blinkingDotVisible;
+                const currentTimeDataset = priceChart.data.datasets[1];
+                
+                if (blinkingDotVisible) {
+                    currentTimeDataset.pointRadius = 10;
+                    currentTimeDataset.backgroundColor = '#ef4444';
+                    currentTimeDataset.borderColor = '#ffffff';
+                    currentTimeDataset.borderWidth = 2;
+                } else {
+                    currentTimeDataset.pointRadius = 6;
+                    currentTimeDataset.backgroundColor = 'rgba(239, 68, 68, 0.4)';
+                    currentTimeDataset.borderColor = 'rgba(255, 255, 255, 0.6)';
+                    currentTimeDataset.borderWidth = 1;
+                }
+                
+                priceChart.update('none');
+            }, 800); // Blink every 0.8 seconds
+        }
+        
+        function updateCurrentTimeDot() {
+            if (!priceChart) return;
+
+            // The current time dot is always at the middle position (index 6)
+            // This function is called when new price data comes in via WebSocket
+            const currentTimeDataset = priceChart.data.datasets[1];
+            if (currentTimeDataset.data[6]) {
+                // Current time dot is already positioned, no need to move it
+                // The blinking animation will continue automatically
+            }
+        }
+
+        // Initialize Socket.IO connection
+        const socket = io();
+        
+        // Connection status
+        socket.on('connect', function() {
+            document.getElementById('connection-status').innerHTML = 
+                '<span style="color: var(--success);">● Connected</span>';
+            requestUpdate();
+        });
+        
+        socket.on('disconnect', function() {
+            document.getElementById('connection-status').innerHTML = 
+                '<span style="color: var(--error);">● Disconnected</span>';
+        });
+        
+        // Real-time updates
+        socket.on('price_update', function(data) {
+            updatePrice(data);
+        });
+        
+        socket.on('portfolio_update', function(data) {
+            updatePortfolio(data);
+        });
+        
+        socket.on('trades_update', function(data) {
+            updateTrades(data);
+        });
+        
+        socket.on('trade_executed', function(data) {
+            addTradeToTable(data);
+            // Request fresh portfolio data
+            requestUpdate();
+        });
+        
+        socket.on('status_update', function(data) {
+            updateStatus(data);
+        });
+        
+        // Request initial data
+        function requestUpdate() {
+            socket.emit('request_update');
+        }
+        
+        // Update functions
+        function updatePrice(data) {
+            if (data && data.price) {
+                document.getElementById('current-price').textContent = 
+                    '$' + parseFloat(data.price).toFixed(4);
+                
+                // Update the current time dot position (middle position = index 6)
+                if (priceChart && priceChart.data.datasets[1]) {
+                    priceChart.data.datasets[1].data = Array(13).fill(null);
+                    priceChart.data.datasets[1].data[6] = data.price; // Middle position
+                    priceChart.update('none');
+                }
+                
+                // Update chart every 20 price updates to avoid too frequent refreshes
+                if (!window.chartUpdateCounter) window.chartUpdateCounter = 0;
+                window.chartUpdateCounter++;
+                if (window.chartUpdateCounter % 20 === 0) {  // Update every 20th price update
+                    updateChart();
+                }
+            }
+        }
+        
+        function updatePortfolio(data) {
+            if (!data) return;
+            
+            document.getElementById('usd-balance').textContent = 
+                '$' + parseFloat(data.balance_usd || 0).toFixed(2);
+            document.getElementById('sol-balance').textContent = 
+                parseFloat(data.balance_token || 0).toFixed(6) + ' SOL';
+            document.getElementById('total-value').textContent = 
+                '$' + parseFloat(data.total_value || 0).toFixed(2);
+            document.getElementById('portfolio-value').textContent = 
+                '$' + parseFloat(data.total_value || 0).toFixed(2);
+            
+            const pnl = parseFloat(data.unrealized_pnl || 0);
+            const pnlElement = document.getElementById('unrealized-pnl');
+            const totalPnlElement = document.getElementById('total-pnl');
+
+            // Revised pnlText line for clarity and to avoid potential hidden character issues
+            let pnlPrefix = pnl >= 0 ? '+' : '-';
+            const pnlText = pnlPrefix + '$' + Math.abs(pnl).toFixed(2);
+            const pnlClass = pnl >= 0 ? 'text-success' : 'text-error';
+
+            pnlElement.textContent = pnlText;
+            pnlElement.className = pnlClass;
+            totalPnlElement.textContent = pnlText; // Ensure this line is not causing issues, it was fine before.
+            totalPnlElement.className = pnlClass;
+        }
+        
+        function updateTrades(trades) {
+            if (!trades || trades.length === 0) return;
+            
+            const tbody = document.getElementById('trades-table');
+            tbody.innerHTML = '';
+            
+            trades.slice(-10).reverse().forEach(trade => {
+                addTradeToTable(trade);
+            });
+        }
+        
+        function addTradeToTable(trade) {
+            const tbody = document.getElementById('trades-table');
+            const row = tbody.insertRow(0); // Insert at top
+            
+            const time = new Date(trade.timestamp).toLocaleTimeString();
+            const action = trade.action.toUpperCase();
+            const amount = parseFloat(trade.amount_token || 0).toFixed(6);
+            const price = '$' + parseFloat(trade.price || 0).toFixed(4);
+            
+            row.innerHTML = 
+                '<td>' + time + '</td>' +
+                '<td><span class="' + (trade.action === 'buy' ? 'text-success' : 'text-error') + '">' + action + '</span></td>' +
+                '<td>' + amount + ' SOL</td>' +
+                '<td>' + price + '</td>';
+            
+            // Keep only last 10 trades
+            while (tbody.rows.length > 10) {
+                tbody.deleteRow(-1);
+            }
+        }
+        
+        function updateStatus(data) {
+            const badge = document.getElementById('status-badge');
+            if (data.status === 'running') {
+                badge.textContent = 'Running';
+                badge.className = 'status-badge status-running';
+            } else if (data.status === 'trading') {
+                badge.textContent = 'Trading';
+                badge.className = 'status-badge status-running';
+            } else {
+                badge.textContent = 'Stopped';
+                badge.className = 'status-badge status-stopped';
+            }
+        }
+        
+        // Trading controls
+        async function startTrading() {
+            try {
+                console.log('🚀 Starting trading...');
+                const response = await fetch('http://localhost:5001/api/trading/start', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    console.log('Trading started');
+                } else {
+                    console.error('Failed to start trading');
+                }
+            } catch (error) {
+                console.error('Error starting trading:', error);
+            }
+        }
+        
+        async function stopTrading() {
+            try {
+                console.log('🛑 Stopping trading...');
+                const response = await fetch('http://localhost:5001/api/trading/stop', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    console.log('Trading stopped');
+                } else {
+                    console.error('Failed to stop trading');
+                }
+            } catch (error) {
+                console.error('Error stopping trading:', error);
+            }
+        }
+        
+        function refreshData() {
+            console.log('🔄 Refreshing data...');
+            requestUpdate();
+        }
+        
+        // Expose functions to global scope for onclick handlers
+        window.startTrading = startTrading;
+        window.stopTrading = stopTrading;
+        window.refreshData = refreshData;
+        
+        // Update uptime and chart periodically
+        setInterval(async function() {
+            try {
+                const response = await fetch('http://localhost:5001/api/status');
+                const data = await response.json();
+                if (data.uptime) {
+                    document.getElementById('uptime').textContent = data.uptime;
+                }
+            } catch (error) {
+                console.error('Error fetching status:', error);
+            }
+        }, 60000);
+        
+        // Update chart every 2 minutes
+        setInterval(updateChart, 120000);
+        
+        // Initial load
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 DOM Content Loaded - Starting initialization...');
+            console.log('📍 Chart.js available:', typeof Chart !== 'undefined');
+            console.log('🎮 Functions available:', {
+                startTrading: typeof startTrading !== 'undefined',
+                stopTrading: typeof stopTrading !== 'undefined', 
+                refreshData: typeof refreshData !== 'undefined'
+            });
+            
+            initChart();  // Initialize the chart first
+            setTimeout(requestUpdate, 500); // Give socket time to connect
+            setTimeout(updateChart, 800); // Load chart data quickly
+            
+            // Load chart data immediately if socket is slow
+            setTimeout(function() {
+                console.log('⏱️ Checking chart state after delay...');
+                if (!priceChart || !priceChart.data.labels.length) {
+                    console.log('🔄 Chart needs data, calling updateChart...');
+                    updateChart();
+                } else {
+                    console.log('✅ Chart already has data');
+                }
+            }, 1500);
+        });
+    </script>
+</body>
+</html>
