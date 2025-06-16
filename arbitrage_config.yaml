@@ -1,4 +1,17 @@
-# DEX Arbitrage Strategy Configuration for Solana
+# DEX Arbitrage Strategy Configuration # Arbitrage strategy configuration
+arbitrage:
+  # Minimum profit percentage required to execute a trade
+  min_profit_percentage: 0.1  # 0.1% minimum profit after all fees and slippage
+  
+  # Maximum percentage of portfolio to use for a single arbitrage opportunity
+  max_exposure_percentage: 30  # Up to 30% of portfolio in a single trade
+  
+  # Cooldown period between arbitrage trades for the same token pair (seconds)
+  cooldown_seconds: 300  # 5 minutes
+  
+  # Maximum allowed slippage percentage (relative to expected price)
+  # Higher values allow trades with more slippage, lower values are more conservative
+  max_slippage_pct: 1.0  # 1.0% maximum allowed slippage on any DEX trade
 # This configuration enables a market-neutral arbitrage strategy
 # that profits from price differences between Solana DEXes
 

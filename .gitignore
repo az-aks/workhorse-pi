@@ -29,6 +29,13 @@ ENV/
 config.yaml
 .env
 
+# SSL certificates and keys
+ssl/
+*.pem
+*.key
+*.crt
+*.cert
+
 # Logs
 *.log
 logs/

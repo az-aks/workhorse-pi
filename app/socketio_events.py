@@ -3,10 +3,16 @@ SocketIO events for real-time updates
 """
 
 import logging
+from flask import request
 from flask_socketio import emit
 import asyncio # For async get_balance
+import datetime
 
 logger = logging.getLogger(__name__)
+
+# Track connected clients
+connected_clients = set()
+MAX_CLIENTS = 1  # Limit to 1 client at a time
 
 
 def setup_socketio_events(socketio, trading_bot):
@@ -15,13 +21,31 @@ def setup_socketio_events(socketio, trading_bot):
     @socketio.on('connect')
     def handle_connect():
         """Handle client connection."""
-        logger.info("Client connected")
+        global connected_clients
+        client_sid = request.sid
+        
+        # Check if we already have the maximum number of clients
+        if len(connected_clients) >= MAX_CLIENTS and client_sid not in connected_clients:
+            logger.warning(f"Connection rejected - maximum of {MAX_CLIENTS} client already connected")
+            # Disconnect this client
+            return False
+        
+        # Add this client to our set
+        connected_clients.add(client_sid)
+        logger.info(f"Client connected (SID: {client_sid}) - Total clients: {len(connected_clients)}")
         # Frontend will call request_update immediately after connection
     
     @socketio.on('disconnect')
     def handle_disconnect():
         """Handle client disconnection."""
-        logger.info("Client disconnected")
+        global connected_clients
+        client_sid = request.sid
+        
+        # Remove this client from our set
+        if client_sid in connected_clients:
+            connected_clients.remove(client_sid)
+            
+        logger.info(f"Client disconnected (SID: {client_sid}) - Total clients: {len(connected_clients)}")
     
     # Define the async task separately
     async def do_request_update_async():
@@ -255,3 +279,43 @@ def setup_socketio_events(socketio, trading_bot):
         })
     else:
         logger.warning("TradingBot does not have set_callbacks method.")
+    
+    # Add a helper function for emitting trade errors
+    def emit_trade_error(socketio, error_message, error_code=None, trade_details=None):
+        """
+        Emit a trade error event to the frontend with detailed information.
+        
+        Args:
+            socketio: The SocketIO instance
+            error_message: The error message to display
+            error_code: Optional error code for categorization
+            trade_details: Optional dict with details about the failed trade
+        """
+        error_data = {
+            'message': error_message,
+            'timestamp': datetime.datetime.now().isoformat(),
+            'code': error_code
+        }
+        
+        if trade_details:
+            error_data['trade'] = trade_details
+        
+        logger.error(f"Emitting trade error to frontend: {error_message}")
+        socketio.emit('trade_error', error_data)
+    
+    # Make the function available at the module level for easy import elsewhere
+    trading_bot.socketio = socketio  # Store reference to socketio in trading_bot for error reporting
+    
+    # Function for other modules to report errors
+    def report_trade_error(error_message, error_code=None, trade_details=None):
+        """
+        Public function that can be called from anywhere to report trade errors.
+        Import this function in other files to report errors to the UI.
+        """
+        if hasattr(trading_bot, 'socketio'):
+            emit_trade_error(trading_bot.socketio, error_message, error_code, trade_details)
+        else:
+            logger.error(f"SocketIO not available for error: {error_message}")
+            
+    # Make this function available to other modules
+    trading_bot.report_trade_error = report_trade_error

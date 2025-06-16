@@ -18,13 +18,15 @@ class ArbitrageStrategy:
     by trading the same tokens across different decentralized exchanges on Solana.
     """
     
-    def __init__(self, config: Dict):
+    def __init__(self, config: Dict, trading_bot=None):
         self.config = config
         self.logger = logging.getLogger(__name__)
+        self.trading_bot = trading_bot  # Store reference to trading_bot for reporting errors
         
         # Strategy parameters
         self.min_profit_percentage = config.get('arbitrage', {}).get('min_profit_percentage', 0.5)
         self.max_exposure_percentage = config.get('arbitrage', {}).get('max_exposure_percentage', 30)
+        self.max_slippage_pct = config.get('arbitrage', {}).get('max_slippage_pct', 1.0)
         
         # Solana DEXes only
         self.price_sources = config.get('arbitrage', {}).get('price_sources', 
@@ -320,14 +322,15 @@ class ArbitrageStrategy:
                 }
                 self.trade_history.append(trade_record)
         else:
-            # Log failure
-            self.logger.warning(f"❌ Arbitrage trade failed: {trade_result.get('error', 'Unknown error')}")
+            # Get the error message
+            error_msg = trade_result.get('error', 'Unknown error')
+            self.logger.warning(f"❌ Arbitrage trade failed: {error_msg}")
             
             # Add to history
             trade_record = {
                 'timestamp': datetime.now().isoformat(),
                 'token_pair': trade_result.get('token_pair', 'Unknown'),
-                'error': trade_result.get('error', 'Unknown error'),
+                'error': error_msg,
                 'success': False,
                 'buy_source': trade_result.get('buy_source', 'Unknown'),
                 'sell_source': trade_result.get('sell_source', 'Unknown'),
@@ -337,6 +340,22 @@ class ArbitrageStrategy:
                 'sell_price': trade_result.get('sell_price', 0)
             }
             self.trade_history.append(trade_record)
+            
+            # Report the error to the UI if the function is available
+            if hasattr(self, 'trading_bot') and hasattr(self.trading_bot, 'report_trade_error'):
+                try:
+                    # Format a user-friendly error message
+                    formatted_error = f"Failed trade ({trade_record['token_pair']}): {error_msg}"
+                    self.trading_bot.report_trade_error(formatted_error, 
+                                                       trade_details={
+                                                           'pair': trade_record['token_pair'],
+                                                           'amount': trade_record['trade_amount'],
+                                                           'buy_source': trade_record['buy_source'],
+                                                           'sell_source': trade_record['sell_source']
+                                                       })
+                    self.logger.info("Trade error reported to UI")
+                except Exception as e:
+                    self.logger.error(f"Failed to report trade error to UI: {e}")
             
             # Increase the profit threshold after failures to be more conservative
             self.min_profit_percentage *= 1.05
@@ -451,6 +470,47 @@ class ArbitrageStrategy:
             # STEP 2: Execute buy order - use the source with the lower price
             self.logger.info(f"STEP 2: Executing buy order on {buy_source} at {buy_price:.4f}")
             
+            # Get expected output amount based on current market price
+            expected_base_token_amount = trade_amount / buy_price
+            
+            # First check if we can get a quote to validate slippage
+            if hasattr(solana_client, 'get_jupiter_quote') and trading_mode == 'mainnet':
+                self.logger.info("Checking slippage before executing trade...")
+                
+                # Get token addresses
+                base_token_mint = solana_client.token_addresses.get(base_token)
+                quote_token_mint = solana_client.token_addresses.get(quote_token)
+                
+                # Convert to smallest units for the API
+                token_decimals = solana_client.token_decimals.get(quote_token, 6)
+                amount_smallest_units = int(trade_amount * (10 ** token_decimals))
+                
+                # Get quote from Jupiter
+                quote = await solana_client.get_jupiter_quote(
+                    quote_token_mint,  # Input is quote token (e.g., USDC)
+                    base_token_mint,   # Output is base token (e.g., SOL)
+                    amount_smallest_units
+                )
+                
+                # Validate the slippage
+                max_allowed_slippage = self.config.get('arbitrage', {}).get('max_slippage_pct', 1.0)
+                slippage_result = await self.validate_quote_slippage(
+                    quote, 
+                    expected_base_token_amount,
+                    max_allowed_slippage
+                )
+                
+                if not slippage_result['valid']:
+                    self.logger.warning(f"❌ Trade rejected due to slippage: {slippage_result['error']}")
+                    return {
+                        'success': False,
+                        'error': f"Excessive slippage detected: {slippage_result['error']}",
+                        'slippage_pct': slippage_result['slippage_pct'],
+                        'token_pair': token_pair
+                    }
+                else:
+                    self.logger.info(f"✅ Slippage validation passed: {slippage_result['slippage_pct']:.2f}%")
+            
             # Execute the buy transaction
             buy_result = await solana_client.buy_token(
                 amount_usd=trade_amount, 
@@ -473,6 +533,44 @@ class ArbitrageStrategy:
             
             # STEP 3: Execute sell order on the more expensive DEX
             self.logger.info(f"STEP 3: Executing sell order on {sell_source} at {sell_price:.4f}")
+            
+            # Get expected output amount based on current market price
+            expected_quote_token_amount = base_token_amount * sell_price
+            
+            # Check slippage for the sell transaction too
+            if hasattr(solana_client, 'get_jupiter_quote') and trading_mode == 'mainnet':
+                self.logger.info("Checking slippage before selling...")
+                
+                # Convert to smallest units for the API
+                base_token_decimals = solana_client.token_decimals.get(base_token, 9)
+                amount_smallest_units = int(base_token_amount * (10 ** base_token_decimals))
+                
+                # Get quote from Jupiter for selling
+                quote = await solana_client.get_jupiter_quote(
+                    base_token_mint,   # Input is base token (e.g., SOL)
+                    quote_token_mint,  # Output is quote token (e.g., USDC)
+                    amount_smallest_units
+                )
+                
+                # Validate the slippage
+                max_allowed_slippage = self.config.get('arbitrage', {}).get('max_slippage_pct', 1.0)
+                slippage_result = await self.validate_quote_slippage(
+                    quote, 
+                    expected_quote_token_amount,
+                    max_allowed_slippage
+                )
+                
+                if not slippage_result['valid']:
+                    self.logger.warning(f"❌ Sell rejected due to slippage: {slippage_result['error']}")
+                    return {
+                        'success': False,
+                        'error': f"Excessive slippage on sell: {slippage_result['error']}",
+                        'slippage_pct': slippage_result['slippage_pct'],
+                        'token_pair': token_pair,
+                        'buy_result': buy_result,  # Include the buy result for reference
+                    }
+                else:
+                    self.logger.info(f"✅ Sell slippage validation passed: {slippage_result['slippage_pct']:.2f}%")
             
             # Execute the sell transaction
             sell_result = await solana_client.sell_token(
@@ -548,32 +646,61 @@ class ArbitrageStrategy:
             'step': 0.25         # Step Finance fee
         }
         return trading_fees.get(dex_name, 0.25)  # Default 0.25% if unknown
-    
-    def calculate_slippage(self, token_pair: str) -> float:
-        """Calculate slippage percentage based on token liquidity."""
-        base_slippage = 0.05  # Base 0.05% slippage
         
-        # Calculate pair-specific slippage based on token liquidity
-        high_liquidity_tokens = ['SOL', 'USDC', 'USDT', 'ETH']
-        medium_liquidity_tokens = ['RAY', 'ORCA', 'SRM', 'MNGO']
+    async def validate_quote_slippage(self, quote_response: Dict, expected_output_amount: float, max_slippage_pct: float = 1.0) -> Dict:
+        """
+        Validate a quote for excessive slippage.
         
-        tokens = token_pair.split('/')
-        
-        slippage_multiplier = 1.0
-        # Check if both tokens are high liquidity
-        if all(token in high_liquidity_tokens for token in tokens):
-            slippage_multiplier = 0.5  # Reduce slippage for pairs like SOL/USDC
-        else:
-            # Apply token-specific multipliers
-            for token in tokens:
-                if token in high_liquidity_tokens:
-                    pass  # No adjustment for high liquidity
-                elif token in medium_liquidity_tokens:
-                    slippage_multiplier *= 1.25  # Medium liquidity adjustment
-                else:
-                    slippage_multiplier *= 1.5  # Low liquidity adjustment
-        
-        return base_slippage * slippage_multiplier
+        Args:
+            quote_response: The DEX quote response
+            expected_output_amount: The expected output amount based on market price
+            max_slippage_pct: Maximum allowed slippage percentage (default 1.0%)
+            
+        Returns:
+            Dict with validation result: {'valid': bool, 'slippage_pct': float, 'error': Optional[str]}
+        """
+        if not quote_response or not quote_response.get('data'):
+            return {'valid': False, 'slippage_pct': 0, 'error': 'Invalid quote response'}
+            
+        try:
+            # Extract output amount and slippage info from quote
+            output_amount = float(quote_response['data'].get('outAmount', 0))
+            
+            # Calculate slippage percentage
+            if expected_output_amount <= 0 or output_amount <= 0:
+                return {'valid': False, 'slippage_pct': 0, 'error': 'Invalid output amounts'}
+                
+            # Check if quote explicitly provides price impact
+            price_impact_pct = 0
+            if 'priceImpactPct' in quote_response['data']:
+                try:
+                    price_impact_pct = float(quote_response['data']['priceImpactPct'])
+                    self.logger.info(f"Quote contains price impact info: {price_impact_pct}%")
+                except (ValueError, TypeError):
+                    self.logger.warning("Failed to parse price impact from quote")
+                
+            # Calculate our own slippage percentage
+            actual_slippage_pct = ((expected_output_amount - output_amount) / expected_output_amount) * 100
+            
+            # Use the larger of our calculated slippage or the reported price impact
+            effective_slippage = max(actual_slippage_pct, price_impact_pct)
+            
+            self.logger.info(f"Quote slippage validation - expected: {expected_output_amount:.4f}, "
+                             f"actual: {output_amount:.4f}, slippage: {effective_slippage:.2f}%")
+            
+            # Check if slippage exceeds maximum
+            if effective_slippage > max_slippage_pct:
+                return {
+                    'valid': False,
+                    'slippage_pct': effective_slippage,
+                    'error': f"Excessive slippage of {effective_slippage:.2f}% exceeds maximum allowed {max_slippage_pct}%"
+                }
+                
+            return {'valid': True, 'slippage_pct': effective_slippage, 'error': None}
+            
+        except Exception as e:
+            self.logger.error(f"Error validating quote slippage: {str(e)}")
+            return {'valid': False, 'slippage_pct': 0, 'error': f"Error validating slippage: {str(e)}"}
     
     def get_trade_history(self) -> List[Dict]:
         """

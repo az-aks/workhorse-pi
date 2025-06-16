@@ -67,8 +67,39 @@ Fine-tune the arbitrage parameters:
 arbitrage:
   min_profit_percentage: 0.5   # Higher for safer trades (0.5%)
   max_exposure_percentage: 10   # Lower for reduced risk (10%)
+  max_slippage_pct: 1.0        # Maximum allowed slippage (1.0%)
   # Other settings...
 ```
+
+## Advanced Protection Features
+
+### Slippage Protection
+
+The bot includes advanced slippage protection to ensure trades are only executed when conditions are favorable:
+
+1. **Pre-Trade Slippage Check**: Before executing trades, the bot checks for potential slippage by getting a quote from Jupiter.
+
+2. **Configurable Slippage Tolerance**:
+   ```yaml
+   arbitrage:
+     max_slippage_pct: 1.0  # Maximum allowed slippage percentage
+   ```
+   
+3. **Automatic Trade Rejection**: If slippage exceeds your configured threshold, trades will be automatically rejected.
+
+4. **Real-Time Monitoring**: The system monitors slippage during both the buy and sell phases of arbitrage.
+
+5. **Slippage Impact Tracking**: Trade results include data on actual slippage experienced, helping you tune your settings.
+
+For DEX-only arbitrage, slippage is especially important as it can quickly erode potential profits. Start with conservative settings (like 1.0%) and adjust based on your experience and market conditions.
+
+### Liquidity Checks
+
+Low liquidity can cause high slippage. The bot automatically:
+
+1. Checks available liquidity on DEXes before trades
+2. Rejects trades when liquidity is insufficient 
+3. Adapts trade sizes based on available depth
 
 ## Testing and Deployment
 

@@ -233,62 +233,191 @@
         .text-warning { color: var(--warning); }
         .text-muted { color: var(--text-muted); }
         
+        /* Create a toast notification system for errors and alerts */
+        .toast-container {
+            position: fixed;
+            bottom: 1rem;
+            right: 1rem;
+            z-index: 1000;
+            max-width: 90%;
+            width: 350px;
+        }
+
+        .toast {
+            background: var(--surface);
+            border-left: 4px solid var(--primary);
+            color: var(--text);
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            border-radius: 0.25rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            animation: slide-in 0.3s ease;
+            opacity: 0;
+            transform: translateY(100%);
+            transition: all 0.3s ease;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .toast-error {
+            border-left-color: var(--error);
+        }
+
+        .toast-warning {
+            border-left-color: var(--warning);
+        }
+
+        .toast-success {
+            border-left-color: var(--success);
+        }
+
+        .toast-content {
+            flex: 1;
+            margin-right: 0.5rem;
+        }
+
+        .toast-title {
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+        }
+
+        .toast-message {
+            font-size: 0.875rem;
+            word-break: break-word;
+        }
+
+        .toast-close {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.25rem;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .toast-close:hover {
+            color: var(--text);
+        }
+
+        @keyframes slide-in {
+            from {
+                transform: translateY(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        /* Loading indicators */
         .loading {
             display: inline-block;
             width: 1rem;
             height: 1rem;
-            border: 2px solid var(--border);
-            border-top: 2px solid var(--primary);
+            border: 2px solid rgba(255, 255, 255, 0.3);
             border-radius: 50%;
-            animation: spin 1s linear infinite;
+            border-top-color: var(--primary);
+            animation: spin 1s infinite linear;
+            margin-left: 0.5rem;
         }
-        
+
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
         
-        .chart-container {
-            height: 300px;
-            margin-top: 1rem;
-        }
-        
-        /* Responsive */
+        /* Improve touch targets for mobile */
         @media (max-width: 768px) {
-            .grid-cols-2 { grid-template-columns: 1fr; }
-            .grid-cols-3 { grid-template-columns: 1fr; }
-            .grid-cols-4 { grid-template-columns: repeat(2, 1fr); }
+            /* Existing mobile styles... */
             
-            .header-content {
-                flex-direction: column;
-                gap: 1rem;
-                align-items: center;
+            /* Ensure all interactive elements are large enough for touch */
+            button, .btn, a, input, select {
+                min-height: 44px;
+                min-width: 44px;
             }
             
-            .wallet-info {
-                align-items: center;
-                margin-right: 0;
-            }
-            
-            .metric-value {
-                font-size: 1.5rem;
+            /* Add more spacing between items in tables */
+            .table td, .table th {
+                padding: 0.75rem 0.5rem;
             }
         }
         
         @media (max-width: 480px) {
-            .grid-cols-4 { grid-template-columns: 1fr; }
-            .container { padding: 0.5rem; }
+            /* Existing very small screen styles... */
             
-            .header-content {
-                text-align: center;
+            /* Make toast notifications better on mobile */
+            .toast-container {
+                width: calc(100% - 2rem);
+                right: 1rem;
+                bottom: 1rem;
             }
             
-            .wallet-info {
+            /* Improve scrollable tables */
+            .table-container {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                margin: 0 -0.75rem; /* Negative margin to allow wider scrolling area */
+                padding: 0 0.75rem;
+            }
+            
+            .table-container table {
+                min-width: 100%; /* Ensure table takes at least full width */
+            }
+            
+            /* Make scrollability obvious */
+            .table-scroll-hint {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: var(--text-muted);
                 font-size: 0.7rem;
+                margin-bottom: 0.5rem;
+            }
+            
+            .table-scroll-hint i {
+                font-size: 0.9rem;
+                margin-right: 0.25rem;
+            }
+        }
+        
+        @media (max-width: 375px) {
+            /* Existing ultra-small screen styles... */
+            
+            /* Further optimize for very small screens */
+            .container {
+                padding: 0.4rem;
+            }
+            
+            .card {
+                padding: 0.6rem;
+            }
+            
+            /* Make status badges and controls fit */
+            .status-controls {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                justify-content: center;
+            }
+            
+            .badge, .status-badge {
+                font-size: 0.65rem;
+                padding: 0.2rem 0.4rem;
             }
         }
     </style>
 </head>
 <body>
+    <!-- Toast notifications container -->
+    <div class="toast-container" id="toast-container"></div>
+    
     <header>
         <div class="container">
             <div class="header-content">
@@ -356,7 +485,7 @@
                     <span style="color: #ef4444; margin-right: 5px; font-size: 1.5em;">●</span> Live
                 </div>
             </div>
-            <div style="height: 300px; padding: 1rem;">
+            <div style="height: 300px; padding: 1rem;" class="chart-container">
                 <canvas id="priceChart"></canvas>
             </div>
         </div>
@@ -395,7 +524,7 @@
                 <div class="card-header">
                     <h2 class="card-title">Recent Trades</h2>
                 </div>
-                <div style="max-height: 200px; overflow-y: auto;">
+                <div style="max-height: 200px; overflow-y: auto;" class="table-container">
                     <table class="table">
                         <thead>
                             <tr>
@@ -424,7 +553,7 @@
                     <span id="arbitrage-count" class="badge badge-info">Trades: 0</span>
                 </div>
             </div>
-            <div style="max-height: 300px; overflow-y: auto;">
+            <div style="max-height: 300px; overflow-y: auto; overflow-x: auto; -webkit-overflow-scrolling: touch;" class="table-container">
                 <table class="table">
                     <thead>
                         <tr>
@@ -883,8 +1012,21 @@
         }
         
         // Initialize Socket.IO connection
-        var socket = io('http://localhost:5001', {
-            transports: ['websocket'] // Force WebSocket transport
+        // Auto-detect protocol (http vs https) and host from current page URL
+        const protocol = window.location.protocol;
+        const hostname = window.location.hostname;
+        const port = window.location.port || (protocol === 'https:' ? 443 : 80);
+        const socketUrl = `${protocol}//${hostname}:${port}`;
+        
+        console.log(`Connecting to Socket.IO at ${socketUrl}`);
+        
+        var socket = io(socketUrl, {
+            transports: ['websocket', 'polling'], // Try WebSocket first, fallback to polling
+            rejectUnauthorized: false, // Allow self-signed certificates
+            secure: protocol === 'https:', // Enable secure flag for HTTPS
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+            timeout: 20000
         });
 
         socket.on('connect', () => {
@@ -1293,6 +1435,90 @@
             console.log('📊 Received arbitrage_update:', data);
             updateArbitrageTrades(data);
         });
+
+        // Toast notification system
+        const toastContainer = document.getElementById('toast-container');
+        
+        // Function to show a toast notification
+        function showToast(message, title = 'Notification', type = 'info', duration = 5000) {
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            
+            toast.innerHTML = `
+                <div class="toast-content">
+                    <div class="toast-title">${title}</div>
+                    <div class="toast-message">${message}</div>
+                </div>
+                <button class="toast-close" aria-label="Close">&times;</button>
+            `;
+            
+            toastContainer.appendChild(toast);
+            
+            // Force reflow to enable transition
+            toast.offsetHeight; 
+            toast.classList.add('show');
+            
+            // Setup close button
+            const closeBtn = toast.querySelector('.toast-close');
+            closeBtn.addEventListener('click', () => {
+                closeToast(toast);
+            });
+            
+            // Auto close after duration
+            if (duration) {
+                setTimeout(() => {
+                    closeToast(toast);
+                }, duration);
+            }
+            
+            return toast;
+        }
+        
+        function closeToast(toast) {
+            toast.classList.remove('show');
+            setTimeout(() => {
+                toast.remove();
+            }, 300); // Wait for transition to complete
+        }
+        
+        // Error toast for failed trades
+        function showTradeErrorToast(errorMessage) {
+            return showToast(errorMessage, 'Trade Failed', 'error', 8000);
+        }
+        
+        // Listen for trade errors
+        socket.on('trade_error', function(data) {
+            console.log('❌ Received trade_error:', data);
+            if (data && data.message) {
+                showTradeErrorToast(data.message);
+            } else {
+                showTradeErrorToast('Unknown trade error occurred');
+            }
+        });
+        
+        // Show table scroll hint on mobile
+        function addTableScrollHints() {
+            if (window.innerWidth <= 480) {
+                const tableContainers = document.querySelectorAll('.table-container');
+                tableContainers.forEach(container => {
+                    // Only add hint if table is wider than container
+                    const table = container.querySelector('table');
+                    if (table && table.offsetWidth > container.offsetWidth) {
+                        // Check if hint already exists
+                        if (!container.querySelector('.table-scroll-hint')) {
+                            const hint = document.createElement('div');
+                            hint.className = 'table-scroll-hint';
+                            hint.innerHTML = '<i>⟷</i> Scroll horizontally to see more';
+                            container.insertBefore(hint, table);
+                        }
+                    }
+                });
+            }
+        }
+        
+        // Run on page load and whenever window is resized
+        window.addEventListener('load', addTableScrollHints);
+        window.addEventListener('resize', addTableScrollHints);
     </script>
 </body>
 </html>

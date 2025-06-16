@@ -18,6 +18,14 @@ requests>=2.31.0
 websockets>=11.0.0
 aiohttp>=3.9.0
 
+# Security
+cryptography>=41.0.0
+pyopenssl>=23.0.0
+
+# WebSocket / SocketIO dependencies
+gevent>=22.10.2
+gevent-websocket>=0.10.1
+
 # Utilities
 python-dotenv>=1.0.0
 schedule>=1.2.0

@@ -6,16 +6,23 @@ Main application entry point
 
 import asyncio
 import logging
+import logging.handlers
 import signal
 import sys
 from datetime import datetime
 from pathlib import Path
 import os
+import json
+import threading
 
 import yaml
 from app import create_app
 from core.solana_client import SolanaClient
 from core.price_feeds import PriceFeedManager
+
+# Import these conditionally when needed
+# from gevent import pywsgi
+# from geventwebsocket.handler import WebSocketHandler
 from core.arbitrage_strategy import ArbitrageStrategy
 # Replace TradingBot with ArbitrageBot
 from core.arbitrage_strategy import ArbitrageStrategy
@@ -63,6 +70,7 @@ def setup_logging(config):
         log_file = 'workhorse.log'
         print(f"Warning: Invalid log file path in config, using default: {log_file}")
     
+    # Setup main logging
     logging.basicConfig(
         level=level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -71,6 +79,29 @@ def setup_logging(config):
             logging.StreamHandler(sys.stdout)
         ]
     )
+    
+    # Setup separate trade logger if configured
+    trade_logger = None
+    if log_config.get('log_trades', True):
+        trade_log_file = log_config.get('trade_log_file', 'trades.log')
+        
+        # Create a special logger just for trades
+        trade_logger = logging.getLogger('trade_logger')
+        trade_logger.setLevel(level)
+        
+        # Prevent the trade logger from propagating to the root logger
+        trade_logger.propagate = False
+        
+        # Add a file handler for the trade log
+        trade_handler = logging.FileHandler(trade_log_file)
+        trade_formatter = logging.Formatter('%(asctime)s - %(message)s')
+        trade_handler.setFormatter(trade_formatter)
+        trade_logger.addHandler(trade_handler)
+        
+        print(f"Trade logging enabled, writing to: {trade_log_file}")
+    
+    # Return the trade logger so it can be used by the bot
+    return trade_logger
 
 
 def signal_handler(signum, frame):
@@ -82,9 +113,12 @@ def signal_handler(signum, frame):
 class ArbitrageBot:
     """DEX Arbitrage Bot for automated trading on Solana."""
     
-    def __init__(self, config):
+    def __init__(self, config, trade_logger=None):
         self.logger = logging.getLogger(__name__)
         self.logger.info(f"🔄 Initializing Arbitrage Bot")
+        
+        # Trade logger for separate trade logging
+        self.trade_logger = trade_logger
         
         # Config
         self.config = config
@@ -92,7 +126,7 @@ class ArbitrageBot:
         # Initialize components
         self.solana_client = SolanaClient(self.config)
         self.price_feed = PriceFeedManager(self.config)
-        self.strategy = ArbitrageStrategy(self.config)
+        self.strategy = ArbitrageStrategy(self.config, trading_bot=self)  # Pass self to allow error reporting
         
         # Bot state
         self.running = False
@@ -312,6 +346,15 @@ class ArbitrageBot:
             self.logger.info(f"Emitting trade data: {enriched_data}")
             self.callbacks['trade_executed'](enriched_data)
             
+            # Log trade to separate trade log if available
+            if self.trade_logger:
+                try:
+                    # Format the trade data as JSON for structured logging
+                    trade_json = json.dumps(enriched_data)
+                    self.trade_logger.info(trade_json)
+                except Exception as e:
+                    self.logger.error(f"Failed to log trade to trade_log: {e}")
+            
     def _emit_price_update(self, price_data):
         """Emit price update event via callback."""
         if 'price_update' in self.callbacks and callable(self.callbacks['price_update']):
@@ -348,8 +391,6 @@ class ArbitrageBot:
         # Already handled by main start method
         return True
     
-    def stop_trading(self):
-        """API compatibility method for stopping trading."""
         # Already handled by main stop method
         return True
     
@@ -372,6 +413,49 @@ class ArbitrageBot:
         self.logger.info(f"📊 Bot stopped. Uptime: {self._get_uptime_str()}, "
                        f"Trades executed: {self.trades_executed}, "
                        f"Total profits: {self.total_profits:.4f} USDC")
+    
+    def report_trade_error(self, error_message, error_code=None, trade_details=None):
+        """
+        Report a trade error to the UI if SocketIO is available.
+        This is called by the strategy when a trade fails.
+        
+        Args:
+            error_message: The error message to display
+            error_code: Optional error code
+            trade_details: Optional dict with details about the failed trade
+        """
+        self.logger.error(f"Trade error: {error_message}")
+        
+        # Prepare error data
+        error_data = {
+            'message': error_message,
+            'timestamp': datetime.now().isoformat(),
+            'code': error_code,
+            'type': 'error',
+            'success': False
+        }
+        
+        if trade_details:
+            error_data['trade'] = trade_details
+        
+        # Log to trade log if available
+        if self.trade_logger:
+            try:
+                # Format the trade error data as JSON for structured logging
+                error_json = json.dumps(error_data)
+                self.trade_logger.error(error_json)
+            except Exception as e:
+                self.logger.error(f"Failed to log trade error to trade_log: {e}")
+        
+        # If we're in a Flask context with SocketIO, emit the error
+        if hasattr(self, 'socketio'):
+            try:
+                self.socketio.emit('trade_error', error_data)
+                self.logger.info("Trade error reported to UI via SocketIO")
+            except Exception as e:
+                self.logger.error(f"Failed to emit trade error: {e}")
+        else:
+            self.logger.warning("SocketIO not available to report trade error")
 
 
 async def main():
@@ -380,7 +464,7 @@ async def main():
     config = load_config()
     
     # Setup logging
-    setup_logging(config)
+    trade_logger = setup_logging(config)
     logger = logging.getLogger(__name__)
     
     # Setup signal handlers
@@ -396,7 +480,7 @@ async def main():
         sys.exit(1)
     
     # Initialize arbitrage bot
-    bot = ArbitrageBot(config)
+    bot = ArbitrageBot(config, trade_logger)
     
     # Create Flask app
     app = create_app(config, bot)
@@ -408,20 +492,106 @@ async def main():
     await asyncio.sleep(1)
     
     try:
-        # Run Flask app in a thread to not block the event loop
-        import threading
-        from werkzeug.serving import make_server
+        # Run Flask app with gevent+socketio support
+        import ssl
+        import importlib.util
         
         web_config = config.get('web', {})
         host = web_config.get('host', '0.0.0.0')
         port = web_config.get('port', 5000)
+        use_https = web_config.get('use_https', False)
         
-        logger.info(f"🌐 Starting web interface on http://{host}:{port}")
+        # HTTPS setup
+        ssl_context = None
+        cert_path = web_config.get('cert_path', 'ssl/cert.pem')
+        key_path = web_config.get('key_path', 'ssl/key.pem')
+            
+        if use_https:
+            # Check if certificate files exist
+            if not (os.path.exists(cert_path) and os.path.exists(key_path)):
+                logger.warning("SSL certificate files not found. Generating self-signed certificate...")
+                try:
+                    from generate_cert import generate_self_signed_cert
+                    generate_self_signed_cert(cert_path, key_path)
+                except ImportError:
+                    logger.error("Could not generate SSL certificate. Make sure cryptography package is installed.")
+                    logger.error("Run: pip install cryptography pyopenssl")
+                    logger.warning("Falling back to HTTP (not secure).")
+                    use_https = False
+            else:
+                logger.info(f"Using existing SSL certificates: {cert_path} and {key_path}")
+            
+        # Check if gevent is available
+        gevent_available = importlib.util.find_spec('gevent') is not None
+        websocket_handler_available = importlib.util.find_spec('geventwebsocket') is not None
         
-        server = make_server(host, port, app, threaded=True)
-        server_thread = threading.Thread(target=server.serve_forever)
+        # Function to run the server
+        def run_server():
+            if gevent_available and websocket_handler_available:
+                # Use gevent with websocket support
+                from gevent import pywsgi
+                from geventwebsocket.handler import WebSocketHandler
+                
+                if use_https and os.path.exists(cert_path) and os.path.exists(key_path):
+                    logger.info(f"🔒 Starting secure web interface with gevent on https://{host}:{port}")
+                    server = pywsgi.WSGIServer(
+                        (host, port),
+                        app,
+                        handler_class=WebSocketHandler,
+                        keyfile=key_path,
+                        certfile=cert_path
+                    )
+                else:
+                    logger.info(f"🌐 Starting web interface with gevent on http://{host}:{port} (not secure)")
+                    server = pywsgi.WSGIServer(
+                        (host, port),
+                        app,
+                        handler_class=WebSocketHandler
+                    )
+                    
+                server.serve_forever()
+                
+            else:
+                # Fallback to werkzeug server
+                from werkzeug.serving import make_server
+                
+                if use_https and os.path.exists(cert_path) and os.path.exists(key_path):
+                    try:
+                        # Create SSL context with modern settings
+                        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                        # Set modern cipher suites and protocols
+                        ssl_context.options |= ssl.OP_NO_SSLv2
+                        ssl_context.options |= ssl.OP_NO_SSLv3
+                        ssl_context.options |= ssl.OP_NO_TLSv1
+                        ssl_context.options |= ssl.OP_NO_TLSv1_1
+                        
+                        ssl_context.load_cert_chain(cert_path, key_path)
+                        logger.info("SSL context created successfully.")
+                        logger.info("Note: Browsers will show security warnings about the self-signed certificate.")
+                        logger.info("This is normal - you'll need to click 'Advanced' and 'Accept the Risk' to proceed.")
+                        
+                        logger.info(f"🔒 Starting secure web interface on https://{host}:{port}")
+                        server = make_server(host, port, app, threaded=True, ssl_context=ssl_context)
+                    except Exception as e:
+                        logger.error(f"Error setting up SSL: {str(e)}")
+                        logger.warning("Falling back to HTTP (not secure).")
+                        logger.info(f"🌐 Starting web interface on http://{host}:{port} (not secure)")
+                        server = make_server(host, port, app, threaded=True)
+                else:
+                    logger.info(f"🌐 Starting web interface on http://{host}:{port} (not secure)")
+                    server = make_server(host, port, app, threaded=True)
+                    
+                server.serve_forever()
+        
+        # Start the server in a daemon thread
+        server_thread = threading.Thread(target=run_server)
         server_thread.daemon = True
         server_thread.start()
+        
+        if not gevent_available:
+            logger.warning("gevent not found. For optimal socketio performance, install with: pip install gevent gevent-websocket")
+        
+        logger.info(f"Bot web interface started on {'https' if use_https else 'http'}://{host}:{port}")
         
         # Keep the main loop running
         while True:

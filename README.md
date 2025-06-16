@@ -26,13 +26,38 @@ A lightweight Python-based Solana trading bot optimized for Raspberry Pi with mi
 
 3. **Run the bot:**
    ```bash
+   # Recommended: Use the startup script that checks dependencies & certificates
+   python start.py
+   
+   # Alternative: Run directly
    python main.py
    ```
 
 4. **Access UI:**
    ```
-   http://localhost:5000
+   https://localhost
    ```
+   
+   Note: The bot uses HTTPS on the standard port 443 by default for security. On first run, it will generate a self-signed certificate.
+   You may see a browser warning about the certificate - this is expected for self-signed certificates.
+   
+5. **Troubleshooting Socket.IO Issues:**
+   
+   If you encounter connection errors in the browser console:
+   ```bash
+   # Install additional dependencies for better websocket support
+   pip install gevent gevent-websocket
+   
+   # Then restart using the start script
+   python start.py
+   ```
+   
+   Note: Using port 443 may require running as root on Linux/macOS. If you don't have root access, you can modify the port in config.yaml:
+   ```yaml
+   web:
+     port: 8443  # Alternative HTTPS port that doesn't require root
+   ```
+   Then access at `https://localhost:8443`
 
 ## Project Structure
 

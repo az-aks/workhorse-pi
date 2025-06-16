@@ -22,8 +22,11 @@ def create_app(config, trading_bot):
     socketio = SocketIO(
         app, 
         cors_allowed_origins="*",
-        logger=False,
-        engineio_logger=False
+        logger=config.get('web', {}).get('debug', False),
+        engineio_logger=config.get('web', {}).get('debug', False),
+        ping_timeout=30,
+        ping_interval=15,
+        async_mode='gevent'  # More reliable for HTTPS connections
     )
     
     # Store references for use in routes
@@ -36,6 +39,10 @@ def create_app(config, trading_bot):
     
     # Setup SocketIO events
     setup_socketio_events(socketio, trading_bot)
+    
+    # Store socketio reference in trading bot for error reporting
+    if hasattr(trading_bot, '__class__') and trading_bot.__class__.__name__ == 'ArbitrageBot':
+        trading_bot.socketio = socketio
     
     # Setup logging for Flask
     if not app.debug:
