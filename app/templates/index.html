@@ -705,7 +705,7 @@
                     chartTitleElement.textContent = 'SOL Price Chart (1 Hour - Loading...)';
                 }
                 
-                const response = await fetch('http://localhost:5001/api/price-history?hours=1.5'); // Fetch 1.5 hours to be safe
+                const response = await fetch('/api/price-history?hours=1.5'); // Fetch 1.5 hours to be safe with relative URL
                 const rawData = await response.json();
                 console.log('Raw price history data (for 1hr chart):', rawData);
                 
@@ -772,7 +772,7 @@
                 } else {
                     console.warn('No price history data for 1hr chart, trying current price...');
                     try {
-                        const priceResponse = await fetch('http://localhost:5001/api/price');
+                        const priceResponse = await fetch('/api/price');
                         const priceData = await priceResponse.json();
                         if (priceData && priceData.price) {
                             prices[12] = priceData.price; // Place current price at the end
@@ -808,43 +808,53 @@
             }
         }
 
-        // Helper function to aggregate data into 5-minute intervals
+        // Aggregates raw price data into 5-minute intervals
         function aggregateToFiveMinutes(rawData) {
-            const fiveMinData = [];
-            const grouped = {};
-
-            rawData.forEach(point => {
-                const time = new Date(point.timestamp);
-                // Round down to nearest 5-minute mark
-                const roundedMinutes = Math.floor(time.getMinutes() / 5) * 5;
-                const roundedTime = new Date(time);
-                roundedTime.setMinutes(roundedMinutes, 0, 0); // Set seconds and milliseconds to 0
+            const intervals = {};
+            
+            // Group data by 5-minute intervals
+            for (const point of rawData) {
+                if (!point.timestamp || typeof point.price !== 'number') continue;
                 
-                const key = roundedTime.toISOString();
-                if (!grouped[key]) {
-                    grouped[key] = {
-                        timestamp: key,
+                const timestamp = new Date(point.timestamp);
+                // Create a key based on 5-minute intervals
+                const intervalKey = new Date(
+                    timestamp.getFullYear(),
+                    timestamp.getMonth(),
+                    timestamp.getDate(),
+                    timestamp.getHours(),
+                    Math.floor(timestamp.getMinutes() / 5) * 5,
+                    0
+                ).toISOString();
+                
+                if (!intervals[intervalKey]) {
+                    intervals[intervalKey] = {
                         prices: [],
-                        source: point.source
+                        timestamp: timestamp
                     };
                 }
-                grouped[key].prices.push(point.price);
-            });
-
-            // Calculate average price for each 5-minute interval
-            Object.values(grouped).forEach(group => {
-                const avgPrice = group.prices.reduce((sum, price) => sum + price, 0) / group.prices.length;
-                fiveMinData.push({
-                    timestamp: group.timestamp,
-                    price: avgPrice,
-                    source: group.source
-                });
-            });
+                
+                intervals[intervalKey].prices.push(point.price);
+            }
             
-            console.log('Result of aggregateToFiveMinutes (before sort):', JSON.parse(JSON.stringify(fiveMinData))); // DEBUG
-            const sortedData = fiveMinData.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-            console.log('Result of aggregateToFiveMinutes (after sort):', sortedData); // DEBUG
-            return sortedData;
+            // Convert groups to aggregated data points
+            const result = [];
+            for (const key of Object.keys(intervals).sort()) {
+                const interval = intervals[key];
+                if (interval.prices.length > 0) {
+                    // Calculate average price for this interval
+                    const sum = interval.prices.reduce((total, price) => total + price, 0);
+                    const avgPrice = sum / interval.prices.length;
+                    
+                    result.push({
+                        timestamp: interval.timestamp,
+                        price: avgPrice,
+                        count: interval.prices.length
+                    });
+                }
+            }
+            
+            return result;
         }
         
         // Helper function to get current price from aggregated data

@@ -456,6 +456,42 @@ class ArbitrageBot:
                 self.logger.error(f"Failed to emit trade error: {e}")
         else:
             self.logger.warning("SocketIO not available to report trade error")
+    
+    def get_price_history(self, hours: int = 24):
+        """
+        Get price history for the specified number of hours.
+        Used by the UI for the price chart.
+        
+        Args:
+            hours: Number of hours of history to return
+            
+        Returns:
+            List of price data points with timestamps
+        """
+        self.logger.debug(f"Getting price history for {hours} hours")
+        
+        try:
+            # Get history from price feed if available
+            if hasattr(self, 'price_feed') and self.price_feed:
+                history = self.price_feed.get_history(hours)
+                if history:
+                    return history
+                    
+            # Fallback if no history available
+            current_price = self.get_current_price()
+            if current_price and 'price' in current_price:
+                # Return at least one data point (current price)
+                return [{
+                    'timestamp': datetime.now().isoformat(),
+                    'price': current_price['price'],
+                    'source': current_price.get('source', 'current')
+                }]
+                
+            return []
+            
+        except Exception as e:
+            self.logger.error(f"Error getting price history: {e}")
+            return []
 
 
 async def main():
