@@ -107,6 +107,20 @@ def setup_socketio_events(socketio, trading_bot):
                     else:
                         status_payload['wallet_info'] = wallet_info_for_frontend
                     logger.info("Used get_status() as base for status_payload")
+                    
+                    # Add arbitrage trade information if available
+                    if hasattr(trading_bot, 'strategy') and hasattr(trading_bot.strategy, 'get_trade_history'):
+                        try:
+                            arbitrage_data = {
+                                'trades': trading_bot.strategy.get_trade_history(),
+                                'total_profit': trading_bot.strategy.total_profit if hasattr(trading_bot.strategy, 'total_profit') else 0.0,
+                                'trades_executed': trading_bot.strategy.trades_executed if hasattr(trading_bot.strategy, 'trades_executed') else 0
+                            }
+                            # Emit arbitrage trade data separately
+                            emit('arbitrage_update', arbitrage_data)
+                            logger.info(f"Emitted arbitrage_update with {len(arbitrage_data['trades'])} trades")
+                        except Exception as e:
+                            logger.error(f"Error getting arbitrage trade data: {e}")
                 except Exception as e:
                     logger.error(f"Error using get_status() for status_payload: {e}")
                     # Fall back to manually constructed payload

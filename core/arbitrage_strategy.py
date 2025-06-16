@@ -118,8 +118,6 @@ class ArbitrageStrategy:
                 price_diff = highest_price - lowest_price
                 profit_percentage = (price_diff / lowest_price) * 100
                 
-                self.logger.debug(f"Price comparison for {token_pair}: {lowest_source}=${lowest_price:.4f} vs {highest_source}=${highest_price:.4f}, diff={profit_percentage:.4f}%")
-                
                 # Check if profit exceeds minimum threshold
                 if profit_percentage > self.min_profit_percentage:
                     # Check cooldown period
@@ -128,15 +126,14 @@ class ArbitrageStrategy:
                     
                     if (pair_key in self.last_arbitrage and 
                         current_time - self.last_arbitrage[pair_key] < self.cooldown_period):
-                        self.logger.debug(f"Cooldown period active for {pair_key}")
                         continue
                     
                     # Calculate fees and transaction costs
                     estimated_fees = self.estimate_transaction_costs(lowest_source, highest_source, token_pair)
                     net_profit = profit_percentage - estimated_fees
                     
-                    # Ensure we have a real profit opportunity, with a small epsilon to account for floating-point precision
-                    if net_profit > 0.01: # Only consider >0.01% profit to be meaningful
+                    # Ensure we have a real profit opportunity with enough margin to account for execution variance
+                    if net_profit > 0.05: # Only consider >0.05% profit to be meaningful (increased safety margin)
                         self.logger.info(f"🔍 Arbitrage opportunity detected: Buy {token_pair} on {lowest_source} "
                                         f"at {lowest_price:.4f} and sell on {highest_source} at {highest_price:.4f}")
                         self.logger.info(f"Expected profit: {net_profit:.2f}% after fees")
@@ -185,7 +182,6 @@ class ArbitrageStrategy:
             return signal
         
         # No opportunities found
-        self.logger.debug("No arbitrage opportunities detected at this time")
         return None
     
     def estimate_transaction_costs(self, source1: str, source2: str, token_pair: str) -> float:
@@ -218,7 +214,7 @@ class ArbitrageStrategy:
         
         # Slippage estimate (higher for less liquid pairs)
         # Some pairs on Solana DEXes have limited liquidity
-        base_slippage = 0.15  # 0.15% base slippage each way
+        base_slippage = 0.05  # Reduced to 0.05% base slippage for high liquidity pairs
         
         # Calculate pair-specific slippage based on token liquidity
         high_liquidity_tokens = ['SOL', 'USDC', 'USDT', 'ETH']
@@ -227,20 +223,27 @@ class ArbitrageStrategy:
         tokens = token_pair.split('/')
         
         slippage_multiplier = 1.0
-        for token in tokens:
-            if token in high_liquidity_tokens:
-                pass  # No adjustment for high liquidity
-            elif token in medium_liquidity_tokens:
-                slippage_multiplier *= 1.5  # Medium liquidity adjustment
-            else:
-                slippage_multiplier *= 2.0  # Low liquidity adjustment
+        # Check if both tokens are high liquidity
+        if all(token in high_liquidity_tokens for token in tokens):
+            slippage_multiplier = 0.5  # Reduce slippage for pairs like SOL/USDC
+        else:
+            # Apply token-specific multipliers
+            for token in tokens:
+                if token in high_liquidity_tokens:
+                    pass  # No adjustment for high liquidity
+                elif token in medium_liquidity_tokens:
+                    slippage_multiplier *= 1.25  # Medium liquidity adjustment (reduced)
+                else:
+                    slippage_multiplier *= 1.5  # Low liquidity adjustment (reduced)
         
         slippage = base_slippage * slippage_multiplier
         
-        # Price impact based on trade size (not included yet, would depend on portfolio value)
+        # Price impact based on trade size (depends on portfolio value)
+        # For paper trading, assume small trades with minimal impact
         
         # Add a small buffer for potential price movements between transactions
-        market_movement_buffer = 0.1  # 0.1% buffer
+        # Reduced for paper trading and high liquidity pairs
+        market_movement_buffer = 0.03  # 0.03% buffer (reduced)
         
         # Total cost as percentage
         total_percentage_cost = source1_fee + source2_fee + (slippage * 2) + market_movement_buffer
@@ -301,23 +304,37 @@ class ArbitrageStrategy:
                 self.logger.info(f"✅ Arbitrage trade successful: +{profit:.4f} USD profit")
                 
                 # Add to history
-                self.trade_history.append({
+                trade_record = {
                     'timestamp': datetime.now().isoformat(),
                     'token_pair': trade_result.get('token_pair', 'Unknown'),
                     'profit': profit,
-                    'success': True
-                })
+                    'success': True,
+                    'buy_source': trade_result.get('buy_source', 'Unknown'),
+                    'sell_source': trade_result.get('sell_source', 'Unknown'),
+                    'trade_amount': trade_result.get('trade_amount', 0),
+                    'realized_profit': profit,
+                    'buy_price': trade_result.get('buy_price', 0),
+                    'sell_price': trade_result.get('sell_price', 0)
+                }
+                self.trade_history.append(trade_record)
         else:
             # Log failure
             self.logger.warning(f"❌ Arbitrage trade failed: {trade_result.get('error', 'Unknown error')}")
             
             # Add to history
-            self.trade_history.append({
+            trade_record = {
                 'timestamp': datetime.now().isoformat(),
                 'token_pair': trade_result.get('token_pair', 'Unknown'),
                 'error': trade_result.get('error', 'Unknown error'),
-                'success': False
-            })
+                'success': False,
+                'buy_source': trade_result.get('buy_source', 'Unknown'),
+                'sell_source': trade_result.get('sell_source', 'Unknown'),
+                'trade_amount': trade_result.get('trade_amount', 0),
+                'realized_profit': 0,
+                'buy_price': trade_result.get('buy_price', 0),
+                'sell_price': trade_result.get('sell_price', 0)
+            }
+            self.trade_history.append(trade_record)
             
             # Increase the profit threshold after failures to be more conservative
             self.min_profit_percentage *= 1.05
@@ -422,15 +439,23 @@ class ArbitrageStrategy:
             # 2. Build and sign a transaction
             # 3. Send the transaction and confirm it
             
-            # Here we'll use a placeholder for the trade execution
+            # Calculate slippage based on the same model used in opportunity detection
+            buy_fee_pct = self.get_dex_fee(buy_source) / 100
+            sell_fee_pct = self.get_dex_fee(sell_source) / 100
+            
+            # Calculate slippage based on token liquidity (matching the estimate function)
+            slippage_pct = self.calculate_slippage(token_pair) / 100
+            
+            # Here we'll use a placeholder for the trade execution with accurate fee modeling
             base_token_amount = trade_amount / buy_price
-            estimated_base_received = base_token_amount * 0.995  # Account for actual slippage
+            # Apply buy-side fee and slippage
+            estimated_base_received = base_token_amount * (1 - buy_fee_pct) * (1 - slippage_pct)
             
             # STEP 3: Execute sell order on the more expensive DEX
             self.logger.info(f"Executing sell order on {sell_source} at {sell_price:.4f}")
             
-            # Similar API calls would happen here
-            quote_token_received = estimated_base_received * sell_price * 0.995  # Account for actual slippage
+            # Apply sell-side fee and slippage
+            quote_token_received = estimated_base_received * sell_price * (1 - sell_fee_pct) * (1 - slippage_pct)
             
             # Calculate actual profit
             profit_amount = quote_token_received - trade_amount
@@ -464,3 +489,70 @@ class ArbitrageStrategy:
                 'error': str(e),
                 'token_pair': token_pair
             }
+    
+    def get_dex_fee(self, dex_name: str) -> float:
+        """Get the trading fee percentage for a specific DEX."""
+        trading_fees = {
+            'jupiter': 0.1,      # Jupiter aggregator fee
+            'raydium': 0.22,     # Raydium AMM fee (0.22%)
+            'openbook': 0.14,    # OpenBook (Serum v3) fee
+            'orca': 0.25,        # Orca Whirlpools fee
+            'meteora': 0.2,      # Meteora AMM fee
+            'phoenix': 0.05,     # Phoenix CLOB fee
+            'invariant': 0.18,   # Invariant protocol fee
+            'cykura': 0.3,       # Cykura concentrated liquidity AMM
+            'saros': 0.2,        # Saros AMM fee
+            'step': 0.25         # Step Finance fee
+        }
+        return trading_fees.get(dex_name, 0.25)  # Default 0.25% if unknown
+    
+    def calculate_slippage(self, token_pair: str) -> float:
+        """Calculate slippage percentage based on token liquidity."""
+        base_slippage = 0.05  # Base 0.05% slippage
+        
+        # Calculate pair-specific slippage based on token liquidity
+        high_liquidity_tokens = ['SOL', 'USDC', 'USDT', 'ETH']
+        medium_liquidity_tokens = ['RAY', 'ORCA', 'SRM', 'MNGO']
+        
+        tokens = token_pair.split('/')
+        
+        slippage_multiplier = 1.0
+        # Check if both tokens are high liquidity
+        if all(token in high_liquidity_tokens for token in tokens):
+            slippage_multiplier = 0.5  # Reduce slippage for pairs like SOL/USDC
+        else:
+            # Apply token-specific multipliers
+            for token in tokens:
+                if token in high_liquidity_tokens:
+                    pass  # No adjustment for high liquidity
+                elif token in medium_liquidity_tokens:
+                    slippage_multiplier *= 1.25  # Medium liquidity adjustment
+                else:
+                    slippage_multiplier *= 1.5  # Low liquidity adjustment
+        
+        return base_slippage * slippage_multiplier
+    
+    def get_trade_history(self) -> List[Dict]:
+        """
+        Return the trade history for UI display.
+        Enhanced with additional fields needed by the UI.
+        """
+        # Return a copy to avoid external modifications
+        enhanced_history = []
+        
+        for trade in self.trade_history:
+            # Create a copy with normalized fields
+            enhanced_trade = {
+                'timestamp': trade.get('timestamp', ''),
+                'token_pair': trade.get('token_pair', 'Unknown'),
+                'success': trade.get('success', False),
+                'realized_profit': trade.get('profit', 0),
+                # Default values for missing fields
+                'buy_source': trade.get('buy_source', ''),
+                'sell_source': trade.get('sell_source', ''),
+                'trade_amount': trade.get('trade_amount', 0)
+            }
+            
+            enhanced_history.append(enhanced_trade)
+            
+        return enhanced_history

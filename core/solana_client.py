@@ -54,11 +54,16 @@ class SolanaClient:
         
         # Wallet setup
         wallet_config = config.get('wallet', {})
-        private_key_b58 = wallet_config.get('private_key') # Renamed for clarity
-        wallet_path = config.get('wallet_path')  # This is at the top level of the config, not inside wallet:{}
+        private_key_b58 = wallet_config.get('private_key', '') # Renamed for clarity
+        wallet_path = config.get('wallet_path', '')  # This is at the top level of the config, not inside wallet:{}
 
         self.keypair = None
         self.public_key = None
+
+        # Make sure wallet_path is a string and has a valid value
+        if not isinstance(wallet_path, str):
+            wallet_path = '' 
+            self.logger.warning("Wallet path is not a string. Setting to empty string.")
 
         if wallet_path:
             try:
@@ -69,9 +74,13 @@ class SolanaClient:
                 cwd = os.getcwd()
                 self.logger.info(f"Current working directory: {cwd}")
                 
-                # Try multiple path resolution approaches
-                absolute_path = os.path.abspath(wallet_path)
-                self.logger.info(f"Resolved absolute path: {absolute_path}")
+                # Try multiple path resolution approaches - ensure wallet_path is a string
+                if isinstance(wallet_path, str):
+                    absolute_path = os.path.abspath(wallet_path)
+                    self.logger.info(f"Resolved absolute path: {absolute_path}")
+                else:
+                    absolute_path = ''
+                    self.logger.error(f"Cannot resolve absolute path - wallet_path is not a string: {type(wallet_path)}")
                 
                 # We need to be more robust in finding the wallet file regardless of where the app is run from
                 
@@ -80,15 +89,31 @@ class SolanaClient:
                 self.logger.info(f"Application base directory: {script_dir}")
                 
                 # List of possible locations to look for the wallet file
+                # Ensure wallet_path is a string since we're doing string operations
+                wallet_path_str = wallet_path if isinstance(wallet_path, str) else ""
+                if not wallet_path_str:
+                    self.logger.warning("Empty or invalid wallet path, will attempt with defaults only")
+                    
                 possible_paths = [
-                    absolute_path,                                     # The absolute path if provided
-                    wallet_path,                                       # The path as provided in config
-                    os.path.join(cwd, wallet_path),                    # Relative to current dir
-                    os.path.join(cwd, wallet_path.lstrip('./')),       # Without leading ./
-                    os.path.join(script_dir, wallet_path),             # Relative to app base dir
-                    os.path.join(script_dir, wallet_path.lstrip('./')),# Without leading ./ from app dir
-                    os.path.join(os.path.dirname(cwd), wallet_path)    # One directory up
+                    absolute_path if absolute_path else "",               # The absolute path if provided
+                    wallet_path_str,                                      # The path as provided in config
                 ]
+                
+                # Only add these paths if wallet_path_str is not empty
+                if wallet_path_str:
+                    possible_paths.extend([
+                        os.path.join(cwd, wallet_path_str),                    # Relative to current dir
+                        os.path.join(cwd, wallet_path_str.lstrip('./')),       # Without leading ./
+                        os.path.join(script_dir, wallet_path_str),             # Relative to app base dir
+                        os.path.join(script_dir, wallet_path_str.lstrip('./')),# Without leading ./ from app dir
+                        os.path.join(os.path.dirname(cwd), wallet_path_str)    # One directory up
+                    ])
+                
+                # Add default locations
+                possible_paths.extend([
+                    "./kp.json",                                         # Default file name in current dir
+                    os.path.join(script_dir, "kp.json")                 # Default in app root
+                ])
                 
                 # Try each path
                 found = False
@@ -102,22 +127,21 @@ class SolanaClient:
                 
                 if not found:
                     self.logger.error(f"Wallet file not found after trying multiple paths")
-                    # As a last resort, use the path as is
-                    kp_file_path = wallet_path
-                    
-                    found = False
-                    for path in alt_paths:
-                        self.logger.info(f"Trying alternative path: {path}")
-                        if os.path.exists(path):
-                            self.logger.info(f"File found at alternative path: {path}")
-                            kp_file_path = path
-                            found = True
-                            break
-                    
-                    # This section was replaced by the improved path resolution above
+                    # As a last resort, use the path as is if it's a string
+                    if isinstance(wallet_path, str):
+                        kp_file_path = wallet_path
+                        self.logger.warning(f"Using wallet path as-is: {kp_file_path}")
+                    else:
+                        self.logger.error(f"Wallet path is not a valid string: {type(wallet_path)}")
+                        return
 
 
                 try:
+                    # Make sure kp_file_path is a string
+                    if not isinstance(kp_file_path, str):
+                        self.logger.error(f"kp_file_path is not a string: {type(kp_file_path)}")
+                        raise TypeError(f"kp_file_path must be a string, got {type(kp_file_path)}")
+                        
                     with open(kp_file_path, 'r') as f:
                         file_content = f.read().strip()  # Strip whitespace which can cause JSON parsing issues
                         

@@ -239,85 +239,12 @@ class PriceFeedManager:
         return None
     
     async def fetch_dex_prices(self):
-        """Fetch current prices from multiple Solana DEXes."""
-        dex_prices = {}
-        token_symbol = self.config.get('trading', {}).get('token_symbol', 'SOL')
-        pair = f"{token_symbol}/USDC"
+        """Fetch current prices from multiple Solana DEXes using production-ready methods."""
+        # Import the production-ready implementation
+        from core.fetch_dex_prices import fetch_all_dex_prices
         
-        # Try to get actual Jupiter price first
-        base_price = None
-        try:
-            async with aiohttp.ClientSession() as session:
-                url = "https://quote-api.jup.ag/v6/price"
-                params = {'ids': token_symbol, 'vsToken': 'USDC'}
-                
-                async with session.get(url, params=params, timeout=5) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        if data and 'data' in data and token_symbol in data['data']:
-                            base_price = float(data['data'][token_symbol].get('price', 0))
-                            if base_price > 0:
-                                dex_prices['jupiter'] = {
-                                    'source': 'jupiter',
-                                    'token_pair': pair,
-                                    'price': base_price,
-                                    'timestamp': datetime.now().isoformat()
-                                }
-                                self.logger.info(f"Jupiter: ${base_price:.4f}")
-        except Exception as e:
-            self.logger.warning(f"Failed to fetch Jupiter price, using mock data: {e}")
-        
-        # If Jupiter API failed, use mock base price
-        if base_price is None:
-            # Use mock base price for development
-            base_price = 46.78  # Mock SOL price
-            self.logger.info(f"Using mock base price: ${base_price} for {token_symbol}")
-            
-            dex_prices['jupiter'] = {
-                'source': 'jupiter',
-                'token_pair': pair,
-                'price': base_price,
-                'timestamp': datetime.now().isoformat()
-            }
-        
-        # Generate prices for other DEXes with simulated offsets
-        import random
-        
-        # DEX price variations (each DEX has different prices)
-        dex_variations = {
-            'raydium': (-0.005, 0.005),    # ±0.5%
-            'orca': (-0.008, 0.008),       # ±0.8%
-            'openbook': (-0.01, 0.01),     # ±1.0%
-            'meteora': (-0.007, 0.007),    # ±0.7%
-            'phoenix': (-0.004, 0.004)     # ±0.4%
-        }
-        
-        # Create slightly different prices for each DEX
-        for dex, (min_offset, max_offset) in dex_variations.items():
-            # Skip if this DEX isn't in the config sources
-            if hasattr(self, 'sources') and dex not in self.sources:
-                continue
-                
-            offset = random.uniform(min_offset, max_offset)
-            price = base_price * (1 + offset)
-            
-            dex_prices[dex] = {
-                'source': dex,
-                'token_pair': pair,
-                'price': price,
-                'timestamp': datetime.now().isoformat()
-            }
-            self.logger.info(f"{dex.capitalize()}: ${price:.4f} ({offset*100:+.2f}%)")
-        
-        # Log any potential arbitrage opportunities
-        if len(dex_prices) > 1:
-            min_price = min(dex_prices.items(), key=lambda x: x[1]['price'])
-            max_price = max(dex_prices.items(), key=lambda x: x[1]['price'])
-            
-            diff_pct = (max_price[1]['price'] - min_price[1]['price']) / min_price[1]['price'] * 100
-            if diff_pct > 0.5:  # Only show if difference is > 0.5%
-                self.logger.info(f"🔍 Potential arbitrage: Buy on {min_price[0]} (${min_price[1]['price']:.4f}) "
-                               f"and sell on {max_price[0]} (${max_price[1]['price']:.4f}) = {diff_pct:.2f}% diff")
+        # Get prices from all configured DEXes
+        dex_prices = await fetch_all_dex_prices(self.config, self.logger)
         
         return dex_prices
     

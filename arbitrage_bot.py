@@ -1,20 +1,7 @@
 #!/usr/bin/env python3
 """
 DEX Arbitrage Bot for Solana
-This bot implements a market-neutral arbitrage strat            # Chec            # Check for arbitrage opportunities
-            signal = await self.strategy.detect_opportunities()
-            self.logger.info(f"Arbitrage*** signal check result: {signal}")
-            
-            # Execute arbitrage if signal is generated
-            if signal and isinstance(signal, dict) and signal.get('action') == 'arbitrage':
-                self.logger.info(f"🔔 ARBITRAGE SIGNAL DETECTED: {signal.get('reason', 'No reason provided')}")
-                self.logger.info(f"📊 Signal: Buy {signal['token_pair']} on {signal['buy']['source']} at ${signal['buy']['price']:.4f} and sell on {signal['sell']['source']} at ${signal['sell']['price']:.4f}")
-                self.logger.info(f"💸 INITIATING TRADE EXECUTION NOW!")itrage opportunities
-            signal = await self.strategy.detect_opportunities()
-            # Execute arbitrage if signal is generated
-            if signal:
-                self.logger.info(f"🔔 ARBITRAGE SIGNAL DETECTED: {signal['reason']}")
-                self.logger.info(f"📊 Signal: Buy {signal['token_pair']} on {signal['buy']['source']} at ${signal['buy']['price']:.4f} and sell on {signal['sell']['source']} at ${signal['sell']['price']:.4f}")ween different Solana DEXes.
+This bot implements a market-neutral arbitrage strategy between different Solana DEXes.
 """
 
 import os
@@ -135,9 +122,6 @@ class ArbitrageBot:
             # Check for arbitrage opportunities
             signal = await self.strategy.detect_opportunities()
             
-            # Debug what was returned
-            self.logger.info(f"Signal check result: type={type(signal)}, value={signal}")
-            
             # Execute arbitrage if signal is generated
             if signal and isinstance(signal, dict):
                 self.logger.info(f"🔔 ARBITRAGE SIGNAL DETECTED: {signal.get('reason', 'No reason provided')}")
@@ -229,6 +213,15 @@ class ArbitrageBot:
         self.logger.info(f"📊 Bot stopped. Uptime: {str(uptime).split('.')[0]}, "
                        f"Trades executed: {self.trades_executed}, "
                        f"Total profits: {self.total_profits:.4f} USDC")
+    
+    def get_wallet_info(self):
+        """Return information about the wallet for display in the UI."""
+        wallet_info = {
+            'address': str(self.solana_client.public_key) if hasattr(self.solana_client, 'public_key') and self.solana_client.public_key else None,
+            'balance': None  # Balance will be fetched asynchronously when displayed
+        }
+        self.logger.info(f"get_wallet_info called, returning: {wallet_info}")
+        return wallet_info
 
 
 async def main():

@@ -77,6 +77,19 @@
         .status-stopped { background: var(--error); color: white; }
         .status-paper { background: var(--warning); color: black; }
         
+        /* Badges for arbitrage section */
+        .badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-left: 0.5rem;
+        }
+        
+        .badge-success { background: var(--success); color: white; }
+        .badge-info { background: var(--secondary); color: white; }
+        .badge-warning { background: var(--warning); color: black; }
+        
         /* Settings button for mode switching */
         .settings-btn {
             background: var(--surface-light);
@@ -112,6 +125,15 @@
         .wallet-balance {
             font-weight: 600;
             color: var(--primary);
+        }
+        
+        .wallet-pnl {
+            font-weight: 600;
+            color: var(--success);
+        }
+        
+        .wallet-pnl.negative {
+            color: var(--error);
         }
         
         .grid {
@@ -276,6 +298,7 @@
                 <div class="wallet-info">
                     <div class="wallet-address" id="wallet-address">Wallet: --</div>
                     <div class="wallet-balance" id="wallet-balance">Balance: --</div>
+                    <div class="wallet-pnl" id="wallet-pnl">PnL: --</div>
                 </div>
                 
                 <!-- Status and Mode Controls -->
@@ -310,19 +333,16 @@
             </div>
         </div>
 
-        <!-- Trading Controls -->
+        <!-- Status and Refresh -->
         <div class="card">
             <div class="card-header">
-                <h2 class="card-title">Trading Controls</h2>
+                <h2 class="card-title">Arbitrage Bot Status</h2>
                 <div id="connection-status" class="text-muted">
                     <span class="loading"></span> Connecting...
                 </div>
             </div>
             <div style="display: flex; gap: 1rem;">
-                <button id="toggle-trading-btn" class="btn btn-primary" onclick="toggleTradingState()">
-                    Start Trading
-                </button>
-                <button id="refresh-data" class="btn btn-secondary" onclick="refreshData()">
+                <button id="refresh-data" class="btn btn-primary" onclick="refreshData()">
                     Refresh Data
                 </button>
             </div>
@@ -395,6 +415,36 @@
             </div>
         </div>
 
+        <!-- Arbitrage Trades Section -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Arbitrage Trades</h2>
+                <div>
+                    <span id="arbitrage-profit" class="badge badge-success">Total Profit: $0.00</span>
+                    <span id="arbitrage-count" class="badge badge-info">Trades: 0</span>
+                </div>
+            </div>
+            <div style="max-height: 300px; overflow-y: auto;">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Pair</th>
+                            <th>Buy DEX</th>
+                            <th>Sell DEX</th>
+                            <th>Amount</th>
+                            <th>Profit</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="arbitrage-trades-table">
+                        <tr>
+                            <td colspan="7" class="text-muted text-center">No arbitrage trades yet</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
 
     </div>
 
@@ -778,7 +828,7 @@
             // });
         }
         
-        window.toggleTradingState = toggleTradingState; // Expose main control function
+        // No trading controls needed - arbitrage bot runs automatically
         
         // Request initial data function
         function requestUpdate() {
@@ -789,7 +839,7 @@
         }
 
         let isTradingActive = false;
-        const toggleTradingBtn = document.getElementById('toggle-trading-btn');
+        // Trading button removed - arbitrage bot runs automatically
         const statusBadge = document.getElementById('status-badge');
 
         function startTrading() {
@@ -817,27 +867,8 @@
             }
         }
 
-        function toggleTradingState() {
-            if (isTradingActive) {
-                stopTrading();
-            } else {
-                startTrading();
-            }
-        }
-
         function updateTradingStatus(isActive, currentStatusText = null) {
             isTradingActive = isActive;
-            if (toggleTradingBtn) {
-                if (isTradingActive) {
-                    toggleTradingBtn.textContent = 'Stop Trading';
-                    toggleTradingBtn.classList.remove('btn-primary');
-                    toggleTradingBtn.classList.add('btn-danger');
-                } else {
-                    toggleTradingBtn.textContent = 'Start Trading';
-                    toggleTradingBtn.classList.remove('btn-danger');
-                    toggleTradingBtn.classList.add('btn-primary');
-                }
-            }
             if (statusBadge) {
                 if (currentStatusText) {
                      statusBadge.textContent = currentStatusText;
@@ -955,51 +986,128 @@
             } else {
                 console.log('No wallet_info in received status_update data.');
             }
+            
+            // If we have recent trades data, populate the Recent Trades section
+            if (data.recent_trades && Array.isArray(data.recent_trades)) {
+                const tableBody = document.getElementById('trades-table');
+                tableBody.innerHTML = '';
+                
+                if (data.recent_trades.length === 0) {
+                    const row = document.createElement('tr');
+                    row.innerHTML = '<td colspan="4" class="text-muted text-center">No trades yet</td>';
+                    tableBody.appendChild(row);
+                } else {
+                    // Sort by timestamp (newest first) and update each trade
+                    const sortedTrades = [...data.recent_trades].sort((a, b) => {
+                        return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);
+                    });
+                    
+                    sortedTrades.forEach(trade => {
+                        updateRecentTrades(trade);
+                    });
+                }
+            }
         });
 
         socket.on('trade_update', function(trade) {
-            // Handle trade updates if needed
+            console.log('💱 Received trade_update:', trade);
+            updateRecentTrades(trade);
         });
         
-        // Trading controls
-        async function startTrading() {
-            try {
-                console.log('🚀 Starting trading...');
-                const response = await fetch('http://localhost:5001/api/trading/start', { method: 'POST' });
-                const data = await response.json();
-                if (data.success) {
-                    console.log('Trading started');
-                } else {
-                    console.error('Failed to start trading');
-                }
-            } catch (error) {
-                console.error('Error starting trading:', error);
+        // Update recent trades in the UI
+        function updateRecentTrades(trade) {
+            if (!trade) {
+                console.log('No trade data available');
+                return;
+            }
+
+            console.log('Processing trade for Recent Trades section:', trade);
+            
+            const tableBody = document.getElementById('trades-table');
+            
+            // If this is the first trade, clear the "No trades yet" message
+            if (tableBody.innerHTML.includes('No trades yet')) {
+                tableBody.innerHTML = '';
+            }
+            
+            // Create a new row for this trade
+            const row = document.createElement('tr');
+            
+            // Format the timestamp
+            const tradeTime = new Date(trade.timestamp || Date.now());
+            const timeFormatted = tradeTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+            
+            // Determine action - for arbitrage trades
+            let action, actionClass;
+            
+            if (trade.buy_source && trade.sell_source) {
+                // It's an arbitrage trade
+                action = `${trade.buy_source} → ${trade.sell_source}`;
+                actionClass = 'text-info';
+            } else if (trade.token_pair) {
+                // It's a regular trade with a token pair
+                action = `Arbitrage ${trade.token_pair}`;
+                actionClass = 'text-info';
+            } else {
+                // Unknown trade type
+                action = trade.action || 'Trade';
+                actionClass = 'text-muted';
+            }
+            
+            // Get amount - prefer trade_amount, fall back to amount or calculate from token_pair
+            let amount;
+            if (trade.trade_amount) {
+                amount = parseFloat(trade.trade_amount);
+            } else if (trade.amount) {
+                amount = parseFloat(trade.amount);
+            } else if (trade.token_pair) {
+                // Just show the token pair as description
+                amount = trade.token_pair;
+            } else {
+                amount = 'Unknown';
+            }
+            
+            // Get price or profit information
+            let price;
+            if (trade.realized_profit !== undefined) {
+                price = `Profit: ${parseFloat(trade.realized_profit).toFixed(4)} USDC`;
+            } else if (trade.profit !== undefined) {
+                price = `Profit: ${parseFloat(trade.profit).toFixed(4)} USDC`;
+            } else if (trade.buy_price && trade.sell_price) {
+                price = `${parseFloat(trade.buy_price).toFixed(4)} → ${parseFloat(trade.sell_price).toFixed(4)}`;
+            } else {
+                price = trade.price || 'N/A';
+            }
+            
+            // Create the row HTML
+            row.innerHTML = `
+                <td>${timeFormatted}</td>
+                <td class="${actionClass}">${action}</td>
+                <td>${typeof amount === 'number' ? amount.toFixed(4) : amount}</td>
+                <td>${typeof price === 'number' ? price.toFixed(4) : price}</td>
+            `;
+            
+            // Insert at the beginning of the table (newest first)
+            if (tableBody.firstChild) {
+                tableBody.insertBefore(row, tableBody.firstChild);
+            } else {
+                tableBody.appendChild(row);
+            }
+            
+            // Limit the number of displayed trades to prevent UI clutter
+            const maxDisplayedTrades = 20;
+            while (tableBody.children.length > maxDisplayedTrades) {
+                tableBody.removeChild(tableBody.lastChild);
             }
         }
         
-        async function stopTrading() {
-            try {
-                console.log('🛑 Stopping trading...');
-                const response = await fetch('http://localhost:5001/api/trading/stop', { method: 'POST' });
-                const data = await response.json();
-                if (data.success) {
-                    console.log('Trading stopped');
-                } else {
-                    console.error('Failed to stop trading');
-                }
-            } catch (error) {
-                console.error('Error stopping trading:', error);
-            }
-        }
-        
+        // Data refresh function
         function refreshData() {
             console.log('🔄 Refreshing data...');
             requestUpdate();
         }
         
-        // Expose functions to global scope for onclick handlers
-        window.startTrading = startTrading;
-        window.stopTrading = stopTrading;
+        // Expose function to global scope for onclick handler
         window.refreshData = refreshData;
         
         // Update uptime and chart periodically
@@ -1039,11 +1147,13 @@
                 // Optionally, clear the fields or set to default
                 document.getElementById('wallet-address').textContent = 'Wallet: --';
                 document.getElementById('wallet-balance').textContent = 'Balance: --';
+                document.getElementById('wallet-pnl').textContent = 'PnL: --';
                 return;
             }
             
             const walletAddressEl = document.getElementById('wallet-address');
             const walletBalanceEl = document.getElementById('wallet-balance');
+            const walletPnlEl = document.getElementById('wallet-pnl');
             
             if (walletData.address) {
                 const truncatedAddress = walletData.address.slice(0, 4) + '...' + walletData.address.slice(-4);
@@ -1082,7 +1192,107 @@
                 walletBalanceEl.textContent = 'Balance: 0 SOL (Empty wallet)';
                 console.log('Wallet balance missing or null - treating as empty wallet');
             }
+            
+            // Update PnL if available
+            if (walletData.pnl !== undefined && walletData.pnl !== null) {
+                try {
+                    const pnl = parseFloat(walletData.pnl);
+                    if (!isNaN(pnl)) {
+                        walletPnlEl.textContent = `PnL: ${pnl > 0 ? '+' : ''}${pnl.toFixed(4)} USDC`;
+                        
+                        // Apply color based on value
+                        if (pnl > 0) {
+                            walletPnlEl.classList.remove('negative');
+                        } else if (pnl < 0) {
+                            walletPnlEl.classList.add('negative');
+                        }
+                    } else {
+                        walletPnlEl.textContent = 'PnL: --';
+                    }
+                } catch (e) {
+                    console.error('Error parsing PnL:', e);
+                    walletPnlEl.textContent = 'PnL: --';
+                }
+            } else {
+                // Try to get total profits from arbitrage data if available
+                const arbitrageProfitElem = document.getElementById('arbitrage-profit');
+                if (arbitrageProfitElem && arbitrageProfitElem.textContent) {
+                    // Extract the profit value from "Total Profit: $X.XX"
+                    const profitMatch = arbitrageProfitElem.textContent.match(/\$([0-9.]+)/);
+                    if (profitMatch && profitMatch[1]) {
+                        walletPnlEl.textContent = `PnL: ${profitMatch[1]} USDC`;
+                    } else {
+                        walletPnlEl.textContent = 'PnL: 0.0000 USDC';
+                    }
+                } else {
+                    walletPnlEl.textContent = 'PnL: 0.0000 USDC';
+                }
+            }
         }
+
+        // Function to handle arbitrage trade updates
+        function updateArbitrageTrades(data) {
+            if (!data || !data.trades || !Array.isArray(data.trades)) {
+                console.log('No arbitrage trade data available');
+                return;
+            }
+
+            const tableBody = document.getElementById('arbitrage-trades-table');
+            const profitElement = document.getElementById('arbitrage-profit');
+            const countElement = document.getElementById('arbitrage-count');
+            
+            // Update the summary metrics
+            profitElement.textContent = `Total Profit: $${data.total_profit.toFixed(2)}`;
+            countElement.textContent = `Trades: ${data.trades.length}`;
+            
+            // Clear the table
+            tableBody.innerHTML = '';
+            
+            // If no trades, display a message
+            if (data.trades.length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = '<td colspan="7" class="text-muted text-center">No arbitrage trades yet</td>';
+                tableBody.appendChild(row);
+                return;
+            }
+            
+            // Sort trades by timestamp (newest first)
+            const sortedTrades = [...data.trades].sort((a, b) => {
+                return new Date(b.timestamp) - new Date(a.timestamp);
+            });
+            
+            // Add each trade to the table
+            sortedTrades.forEach(trade => {
+                const row = document.createElement('tr');
+                
+                // Format the timestamp
+                const tradeTime = new Date(trade.timestamp);
+                const timeFormatted = tradeTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+                
+                // Set the status class
+                const statusClass = trade.success ? 'text-success' : 'text-error';
+                const statusText = trade.success ? '✅ Success' : '❌ Failed';
+                
+                // Create the row HTML
+                row.innerHTML = `
+                    <td>${timeFormatted}</td>
+                    <td>${trade.token_pair}</td>
+                    <td>${trade.buy_source}</td>
+                    <td>${trade.sell_source}</td>
+                    <td>$${parseFloat(trade.trade_amount).toFixed(2)}</td>
+                    <td class="${trade.realized_profit > 0 ? 'text-success' : 'text-error'}">$${parseFloat(trade.realized_profit).toFixed(4)}</td>
+                    <td class="${statusClass}">${statusText}</td>
+                `;
+                
+                tableBody.appendChild(row);
+            });
+        }
+
+        // Listen for arbitrage trade updates from the server
+        socket.on('arbitrage_update', function(data) {
+            console.log('📊 Received arbitrage_update:', data);
+            updateArbitrageTrades(data);
+        });
     </script>
 </body>
 </html>
