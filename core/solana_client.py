@@ -48,10 +48,25 @@ class SolanaClient:
         # Initialize client
         try:
             self.client = AsyncClient(self.rpc_endpoint, commitment=self.commitment)
+            
+            # Log RPC endpoint type
+            if "jito" in self.rpc_endpoint.lower():
+                self.logger.info(f"Using Jito MEV-protected RPC: {self.rpc_endpoint}")
+            else:
+                self.logger.info(f"Using standard Solana RPC: {self.rpc_endpoint}")
+                
         except Exception as e:
             self.logger.error(f"Failed to initialize Solana client: {e}")
             self.client = None
             return
+            
+        # Initialize MEV protection
+        try:
+            from core.mev_protection import MevProtection
+            self.mev_protection = MevProtection(config)
+        except ImportError as e:
+            self.logger.warning(f"MEV protection module not available: {e}")
+            self.mev_protection = None
         
         # Wallet setup
         wallet_config = config.get('wallet', {})
@@ -694,6 +709,13 @@ class SolanaClient:
             
             # Decode the transaction
             transaction_bytes = b64decode(swap_transaction_base64)
+            
+            # Add MEV protection (priority fees) if available
+            if hasattr(self, 'mev_protection') and self.mev_protection is not None:
+                self.logger.info("Applying MEV protection (adding priority fees)")
+                transaction_bytes = self.mev_protection.add_priority_fee(transaction_bytes)
+            
+            # Deserialize the modified transaction
             transaction = VersionedTransaction.deserialize(transaction_bytes)
             
             # Sign the transaction
