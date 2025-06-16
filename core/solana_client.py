@@ -8,6 +8,7 @@ from typing import Dict, Optional, List, TYPE_CHECKING, Any
 from decimal import Decimal
 import json # Added for reading JSON keypair file
 import os # Added for path manipulation
+from datetime import datetime
 
 if TYPE_CHECKING:
     Pubkey = None  # type: ignore
@@ -399,96 +400,344 @@ class SolanaClient:
             self.logger.error(f"Error getting transaction history: {e}")
             return []
     
-    async def buy_token(self, amount_usd: float, token_symbol: str) -> bool:
+    async def buy_token(self, amount_usd: float, token_symbol: str, quote_token: str = 'USDC') -> Dict:
         """
-        Buy tokens with USD.
-        This is a simplified implementation - in production, you'd use Jupiter or another DEX aggregator.
+        Buy tokens with USD-equivalent stablecoin (e.g. USDC, USDT)
+        Uses Jupiter for best swap execution.
+        
+        Args:
+            amount_usd: The amount in USD to spend
+            token_symbol: The token to buy (e.g. 'SOL')
+            quote_token: The token to use for payment (default 'USDC')
+            
+        Returns:
+            Dict with transaction status and details
         """
+        # Check if we're in paper trading mode
+        if self.config.get('trading', {}).get('mode') == 'paper':
+            self.logger.info(f"📄 PAPER TRADING: Simulating buy of {amount_usd} USD worth of {token_symbol}")
+            await asyncio.sleep(1)  # Simulate network delay
+            return {
+                'success': True, 
+                'signature': 'paper-trading-simulated-tx',
+                'token_symbol': token_symbol,
+                'amount': amount_usd,
+                'paper_trading': True
+            }
+            
+        # Real trading requires initialized client and keypair
         if not self.client or not self.keypair:
-            self.logger.error("Cannot execute live trade - client not initialized")
-            return False
+            self.logger.error("Cannot execute live trade - client not initialized or keypair missing")
+            return {'success': False, 'error': "Client or keypair not initialized"}
         
         try:
-            self.logger.info(f"Attempting to buy {amount_usd} USD worth of {token_symbol}")
+            self.logger.info(f"🔄 REAL TRADING: Attempting to buy {amount_usd} {quote_token} worth of {token_symbol}")
             
-            # In a real implementation, you would:
-            # 1. Get current price from Jupiter
-            # 2. Calculate slippage
-            # 3. Build swap transaction using Jupiter API
-            # 4. Sign and send transaction
+            # Get token mint addresses
+            input_mint = self.token_addresses.get(quote_token)
+            output_mint = self.token_addresses.get(token_symbol)
             
-            # For now, this is a placeholder that logs the trade
-            self.logger.warning("Live trading not fully implemented - this would execute a real trade")
+            if not input_mint or not output_mint:
+                error_msg = f"Missing mint address for {quote_token} or {token_symbol}"
+                self.logger.error(error_msg)
+                return {'success': False, 'error': error_msg}
             
-            # Simulate transaction delay
-            await asyncio.sleep(1)
+            # Convert USD amount to token smallest units (e.g. USDC has 6 decimals)
+            decimals = 6 if quote_token in ['USDC', 'USDT'] else 9
+            amount_in_smallest_units = int(amount_usd * (10 ** decimals))
             
-            # For demo purposes, return True (success)
-            # In production, return actual transaction success
-            return True
+            # Step 1: Get quote from Jupiter
+            quote = await self.get_jupiter_quote(
+                input_mint=input_mint,
+                output_mint=output_mint,
+                amount=amount_in_smallest_units,
+                slippage_bps=50  # 0.5% slippage tolerance
+            )
+            
+            if not quote:
+                error_msg = f"Failed to get quote for {quote_token} -> {token_symbol}"
+                self.logger.error(error_msg)
+                return {'success': False, 'error': error_msg}
+                
+            # Step 2: Get swap instructions
+            swap_data = await self.get_jupiter_swap_instructions(quote)
+            
+            if not swap_data or 'swapTransaction' not in swap_data:
+                error_msg = "Failed to get swap instructions from Jupiter"
+                self.logger.error(error_msg)
+                return {'success': False, 'error': error_msg}
+            
+            # Step 3: Execute the swap
+            swap_transaction_base64 = swap_data['swapTransaction']
+            result = await self.execute_jupiter_swap(swap_transaction_base64)
+            
+            # Add trade details to result
+            result.update({
+                'token_symbol': token_symbol,
+                'quote_token': quote_token, 
+                'amount_requested': amount_usd,
+                'input_amount': float(quote.get('inAmount', 0)) / (10 ** decimals),
+                'output_amount': float(quote.get('outAmount', 0)) / (10 ** (9 if token_symbol == 'SOL' else decimals)),
+                'timestamp': datetime.now().isoformat() if 'datetime' in globals() else None
+            })
+            
+            if result.get('success'):
+                self.logger.info(f"✅ Buy {token_symbol} transaction successful: {result.get('signature')}")
+            else:
+                self.logger.error(f"❌ Buy {token_symbol} transaction failed: {result.get('error')}")
+            
+            return result
             
         except Exception as e:
-            self.logger.error(f"Error buying {token_symbol}: {e}")
-            return False
+            self.logger.error(f"Error buying {token_symbol}: {str(e)}", exc_info=True)
+            return {
+                'success': False, 
+                'error': f"Exception: {str(e)}", 
+                'token_symbol': token_symbol,
+                'amount': amount_usd
+            }
     
-    async def sell_token(self, amount_token: float, token_symbol: str) -> bool:
+    async def sell_token(self, amount_token: float, token_symbol: str, quote_token: str = 'USDC') -> Dict:
         """
-        Sell tokens for USD.
-        This is a simplified implementation - in production, you'd use Jupiter or another DEX aggregator.
+        Sell tokens for USD-equivalent stablecoin (e.g. USDC, USDT)
+        Uses Jupiter for best swap execution.
+        
+        Args:
+            amount_token: The amount of tokens to sell
+            token_symbol: The token to sell (e.g. 'SOL')
+            quote_token: The token to receive (default 'USDC')
+            
+        Returns:
+            Dict with transaction status and details
         """
+        # Check if we're in paper trading mode
+        if self.config.get('trading', {}).get('mode') == 'paper':
+            self.logger.info(f"📄 PAPER TRADING: Simulating sell of {amount_token} {token_symbol}")
+            await asyncio.sleep(1)  # Simulate network delay
+            return {
+                'success': True, 
+                'signature': 'paper-trading-simulated-tx',
+                'token_symbol': token_symbol,
+                'amount': amount_token,
+                'paper_trading': True
+            }
+            
+        # Real trading requires initialized client and keypair
         if not self.client or not self.keypair:
-            self.logger.error("Cannot execute live trade - client not initialized")
-            return False
+            self.logger.error("Cannot execute live trade - client not initialized or keypair missing")
+            return {'success': False, 'error': "Client or keypair not initialized"}
         
         try:
-            self.logger.info(f"Attempting to sell {amount_token} {token_symbol}")
+            self.logger.info(f"🔄 REAL TRADING: Attempting to sell {amount_token} {token_symbol} for {quote_token}")
             
-            # In a real implementation, you would:
-            # 1. Get current price from Jupiter
-            # 2. Calculate slippage
-            # 3. Build swap transaction using Jupiter API
-            # 4. Sign and send transaction
+            # Get token mint addresses
+            input_mint = self.token_addresses.get(token_symbol)
+            output_mint = self.token_addresses.get(quote_token)
             
-            # For now, this is a placeholder that logs the trade
-            self.logger.warning("Live trading not fully implemented - this would execute a real trade")
+            if not input_mint or not output_mint:
+                error_msg = f"Missing mint address for {token_symbol} or {quote_token}"
+                self.logger.error(error_msg)
+                return {'success': False, 'error': error_msg}
             
-            # Simulate transaction delay
-            await asyncio.sleep(1)
+            # Convert token amount to smallest units (lamports for SOL, etc.)
+            decimals = 9 if token_symbol == 'SOL' else 6
+            amount_in_smallest_units = int(amount_token * (10 ** decimals))
             
-            # For demo purposes, return True (success)
-            # In production, return actual transaction success
-            return True
+            # Step 1: Get quote from Jupiter
+            quote = await self.get_jupiter_quote(
+                input_mint=input_mint,
+                output_mint=output_mint,
+                amount=amount_in_smallest_units,
+                slippage_bps=50  # 0.5% slippage tolerance
+            )
+            
+            if not quote:
+                error_msg = f"Failed to get quote for {token_symbol} -> {quote_token}"
+                self.logger.error(error_msg)
+                return {'success': False, 'error': error_msg}
+                
+            # Step 2: Get swap instructions
+            swap_data = await self.get_jupiter_swap_instructions(quote)
+            
+            if not swap_data or 'swapTransaction' not in swap_data:
+                error_msg = "Failed to get swap instructions from Jupiter"
+                self.logger.error(error_msg)
+                return {'success': False, 'error': error_msg}
+            
+            # Step 3: Execute the swap
+            swap_transaction_base64 = swap_data['swapTransaction']
+            result = await self.execute_jupiter_swap(swap_transaction_base64)
+            
+            # Add trade details to result
+            result.update({
+                'token_symbol': token_symbol,
+                'quote_token': quote_token, 
+                'amount_sold': amount_token,
+                'input_amount': float(quote.get('inAmount', 0)) / (10 ** decimals),
+                'output_amount': float(quote.get('outAmount', 0)) / (10 ** 6),  # USDC/USDT have 6 decimals
+                'timestamp': datetime.now().isoformat() if 'datetime' in globals() else None
+            })
+            
+            if result.get('success'):
+                self.logger.info(f"✅ Sell {token_symbol} transaction successful: {result.get('signature')}")
+            else:
+                self.logger.error(f"❌ Sell {token_symbol} transaction failed: {result.get('error')}")
+            
+            return result
             
         except Exception as e:
-            self.logger.error(f"Error selling {token_symbol}: {e}")
-            return False
+            self.logger.error(f"Error selling {token_symbol}: {str(e)}", exc_info=True)
+            return {
+                'success': False, 
+                'error': f"Exception: {str(e)}", 
+                'token_symbol': token_symbol,
+                'amount': amount_token
+            }
     
-    async def get_jupiter_quote(self, input_mint: str, output_mint: str, amount: int) -> Optional[Dict]:
+    async def get_jupiter_quote(self, input_mint: str, output_mint: str, amount: int, slippage_bps: int = 50) -> Optional[Dict]:
         """
         Get a quote from Jupiter for token swap.
-        This would be used in the actual buy/sell implementations.
+        
+        Args:
+            input_mint: The mint address of the token to swap from
+            output_mint: The mint address of the token to swap to
+            amount: The amount of input token to swap (in smallest units)
+            slippage_bps: The slippage tolerance in basis points (1 bps = 0.01%, default 0.5%)
+            
+        Returns:
+            Jupiter quote response or None if failed
         """
         try:
             import aiohttp
+            
+            self.logger.info(f"Getting Jupiter quote: {input_mint} -> {output_mint}, amount: {amount}")
             
             url = "https://quote-api.jup.ag/v6/quote"
             params = {
                 'inputMint': input_mint,
                 'outputMint': output_mint,
                 'amount': amount,
-                'slippageBps': 50  # 0.5% slippage
+                'slippageBps': slippage_bps
             }
             
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, params=params) as response:
                     if response.status == 200:
-                        return await response.json()
+                        data = await response.json()
+                        self.logger.info(f"Jupiter quote received: in_amount={data.get('inAmount')}, out_amount={data.get('outAmount')}")
+                        return data
+                    else:
+                        error_text = await response.text()
+                        self.logger.error(f"Jupiter quote API error ({response.status}): {error_text}")
             
             return None
             
         except Exception as e:
-            self.logger.error(f"Error getting Jupiter quote: {e}")
+            self.logger.error(f"Error getting Jupiter quote: {str(e)}", exc_info=True)
             return None
+    
+    async def get_jupiter_swap_instructions(self, quote_response: Dict) -> Optional[Dict]:
+        """
+        Get swap instructions from Jupiter based on a quote.
+        
+        Args:
+            quote_response: The response from get_jupiter_quote
+            
+        Returns:
+            Jupiter swap instructions or None if failed
+        """
+        try:
+            import aiohttp
+            
+            url = "https://quote-api.jup.ag/v6/swap"
+            
+            # Extract quote data
+            quote_data = {
+                'quoteResponse': quote_response,
+                'userPublicKey': str(self.public_key),
+                'wrapAndUnwrapSol': True,  # Auto-wrap and unwrap SOL
+            }
+            
+            self.logger.info(f"Requesting swap instructions from Jupiter")
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=quote_data) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        self.logger.info(f"Swap instructions received, transaction length: {len(data.get('swapTransaction', ''))}")
+                        return data
+                    else:
+                        error_text = await response.text()
+                        self.logger.error(f"Jupiter swap API error ({response.status}): {error_text}")
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error getting Jupiter swap instructions: {str(e)}", exc_info=True)
+            return None
+            
+    async def execute_jupiter_swap(self, swap_transaction_base64: str) -> Dict:
+        """
+        Execute a Jupiter swap transaction.
+        
+        Args:
+            swap_transaction_base64: Base64 encoded transaction from Jupiter
+            
+        Returns:
+            Dict with success status and transaction details/error
+        """
+        try:
+            from base64 import b64decode
+            from solders.transaction import VersionedTransaction
+            
+            self.logger.info("Preparing to execute Jupiter swap transaction")
+            
+            # Decode the transaction
+            transaction_bytes = b64decode(swap_transaction_base64)
+            transaction = VersionedTransaction.deserialize(transaction_bytes)
+            
+            # Sign the transaction
+            transaction.sign([self.keypair])
+            
+            # Send the transaction
+            self.logger.info("Sending signed swap transaction to Solana")
+            response = await self.client.send_transaction(transaction)
+            
+            if response.value:
+                tx_signature = response.value
+                self.logger.info(f"Swap transaction sent: {tx_signature}")
+                
+                # Wait for confirmation
+                self.logger.info("Waiting for transaction confirmation...")
+                confirmation = await self.client.confirm_transaction(tx_signature)
+                
+                if confirmation:
+                    self.logger.info(f"Swap transaction confirmed: {tx_signature}")
+                    return {
+                        'success': True,
+                        'signature': tx_signature,
+                    }
+                else:
+                    self.logger.error(f"Swap transaction failed to confirm: {tx_signature}")
+                    return {
+                        'success': False,
+                        'error': 'Transaction failed to confirm',
+                        'signature': tx_signature
+                    }
+            else:
+                self.logger.error(f"Failed to submit swap transaction: {response}")
+                return {
+                    'success': False,
+                    'error': 'Failed to submit transaction',
+                    'details': str(response)
+                }
+                
+        except Exception as e:
+            self.logger.error(f"Error executing Jupiter swap: {str(e)}", exc_info=True)
+            return {
+                'success': False,
+                'error': f'Exception: {str(e)}'
+            }
     
     async def close(self):
         """Close the Solana client connection."""
