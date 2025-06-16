@@ -150,7 +150,7 @@ class ArbitrageBot:
             # Format the data for the strategy - ensure it has all required fields
             formatted_data = {
                 'source': price_data.get('source', 'unknown'),
-                'token_pair': f"{price_data.get('token', self.config['trading']['token_symbol'])}/{price_data.get('quote_token', 'USDC')}",
+                'token_pair': f"{price_data.get('token', self.config.get('trading', {}).get('token_symbol', 'SOL'))}/{price_data.get('quote_token', 'USDC')}",
                 'price': price_data.get('price', 0),
                 'timestamp': price_data.get('timestamp', None)
             }
@@ -161,7 +161,10 @@ class ArbitrageBot:
                 return
                 
             # Log the price update for debugging
-            self.logger.debug(f"Price update received: {formatted_data['source']} - {formatted_data['token_pair']} - ${formatted_data['price']:.4f}")
+            source = formatted_data.get('source', 'unknown')
+            token_pair = formatted_data.get('token_pair', 'UNKNOWN/UNKNOWN')
+            price = formatted_data.get('price', 0)
+            self.logger.debug(f"Price update received: {source} - {token_pair} - ${price:.4f}")
             
             # Update strategy with new price data
             await self.strategy.update_prices(formatted_data)
@@ -174,7 +177,12 @@ class ArbitrageBot:
                 self.logger.info(f"🔔 ARBITRAGE SIGNAL DETECTED: {signal.get('reason', 'No reason provided')}")
                 
                 if 'buy' in signal and 'sell' in signal:
-                    self.logger.info(f"📊 Signal: Buy {signal['token_pair']} on {signal['buy'].get('source')} at ${signal['buy'].get('price', 0):.4f} and sell on {signal['sell'].get('source')} at ${signal['sell'].get('price', 0):.4f}")
+                    token_pair = signal.get('token_pair', 'Unknown')
+                    buy_source = signal.get('buy', {}).get('source', 'Unknown')
+                    buy_price = signal.get('buy', {}).get('price', 0)
+                    sell_source = signal.get('sell', {}).get('source', 'Unknown')
+                    sell_price = signal.get('sell', {}).get('price', 0)
+                    self.logger.info(f"📊 Signal: Buy {token_pair} on {buy_source} at ${buy_price:.4f} and sell on {sell_source} at ${sell_price:.4f}")
                 else:
                     self.logger.error(f"Signal structure invalid: {signal}")
                 

@@ -107,7 +107,8 @@ class PriceFeedManager:
                 self._emit_price_update(price_copy)
             
             # Log a summary of DEX prices
-            self.logger.info(f"DEX prices: {', '.join([f'{s}: ${p['price']:.2f}' for s, p in dex_prices.items()])}")
+            price_summary = ', '.join([f"{s}: ${p.get('price', 0):.2f}" for s, p in dex_prices.items()])
+            self.logger.info(f"DEX prices: {price_summary}")
         
         # Also get standard price sources as backup
         async with aiohttp.ClientSession() as session:
@@ -272,7 +273,9 @@ class PriceFeedManager:
             }
             self._last_update = time.time()
             
-            self.logger.debug(f"Price updated: ${price_data['price']:.4f} from {price_data['source']}")
+            price = price_data.get('price', 0)
+            source = price_data.get('source', 'unknown')
+            self.logger.debug(f"Price updated: ${price:.4f} from {source}")
     
     async def _start_websocket(self, source: str):
         """Start WebSocket connection for real-time prices."""

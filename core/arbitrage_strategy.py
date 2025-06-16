@@ -159,7 +159,8 @@ class ArbitrageStrategy:
             best_opportunity = max(opportunities, key=lambda x: x['net_profit'])
             
             # Log the number of opportunities found
-            self.logger.info(f"Found {len(opportunities)} valid arbitrage opportunities, best: {best_opportunity['net_profit']:.4f}% profit")
+            best_profit = best_opportunity.get('net_profit', 0)
+            self.logger.info(f"Found {len(opportunities)} valid arbitrage opportunities, best: {best_profit:.4f}% profit")
             
             # Return arbitrage signal
             signal = {
@@ -174,11 +175,12 @@ class ArbitrageStrategy:
                     'price': best_opportunity['sell_price']
                 },
                 'expected_profit': best_opportunity['net_profit'],
-                'reason': f"Arbitrage: {best_opportunity['net_profit']:.2f}% profit opportunity",
+                'reason': f"Arbitrage: {best_profit:.2f}% profit opportunity",
                 'confidence': min(100, best_opportunity['net_profit'] * 10)  # Higher profit = higher confidence
             }
             
-            self.logger.info(f"🚨 Generating arbitrage signal: {signal['reason']}")
+            reason = signal.get('reason', 'No reason provided')
+            self.logger.info(f"🚨 Generating arbitrage signal: {reason}")
             return signal
         
         # No opportunities found

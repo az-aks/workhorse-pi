@@ -146,7 +146,9 @@ class SolanaClient:
                         file_content = f.read().strip()  # Strip whitespace which can cause JSON parsing issues
                         
                         # Don't log the full content for security reasons
-                        content_preview = f"{file_content[:20]}...{file_content[-10:] if len(file_content) > 30 else ''}"
+                        start_content = file_content[:20] if len(file_content) >= 20 else file_content
+                        end_content = file_content[-10:] if len(file_content) > 30 else ""
+                        content_preview = f"{start_content}...{end_content}"
                         self.logger.info(f"Read file content (truncated): {content_preview}")
                         self.logger.info(f"File content length: {len(file_content)} characters")
                         
@@ -158,7 +160,10 @@ class SolanaClient:
                             self.logger.error(f"JSON parsing error: {e} - Content might not be valid JSON")
                             # Log more details for debugging
                             self.logger.error(f"JSON error at position: {e.pos}, line: {e.lineno}, column: {e.colno}")
-                            self.logger.error(f"JSON content around error: '{file_content[max(0, e.pos-20):min(len(file_content), e.pos+20)]}'")
+                            start_pos = max(0, e.pos-20)
+                            end_pos = min(len(file_content), e.pos+20)
+                            error_context = file_content[start_pos:end_pos]
+                            self.logger.error(f"JSON content around error: '{error_context}'")
                             raise
                 except FileNotFoundError:
                     self.logger.error(f"Wallet file not found at path: {kp_file_path}")
@@ -191,7 +196,8 @@ class SolanaClient:
                             self.logger.error(f"Error creating Keypair from bytes: {e}")
                             raise
                     else:
-                        self.logger.error(f"Invalid format in wallet file: Not all elements are integers. First few elements: {secret_key_array[:5]}")
+                        first_elements = secret_key_array[:5] if isinstance(secret_key_array, list) and len(secret_key_array) >= 5 else "N/A"
+                        self.logger.error(f"Invalid format in wallet file: Not all elements are integers. First few elements: {first_elements}")
                 else:
                     self.logger.error(f"Invalid format in wallet file {kp_file_path}. Expected a JSON array of integers, got {type(secret_key_array)}")
 

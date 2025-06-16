@@ -302,9 +302,14 @@ async def fetch_all_dex_prices(config, logger):
         min_price = min(dex_prices.items(), key=lambda x: x[1]['price'])
         max_price = max(dex_prices.items(), key=lambda x: x[1]['price'])
         
-        diff_pct = (max_price[1]['price'] - min_price[1]['price']) / min_price[1]['price'] * 100
+        min_price_value = min_price[1].get('price', 0)
+        max_price_value = max_price[1].get('price', 0)
+        min_source = min_price[0]
+        max_source = max_price[0]
+        diff_pct = (max_price_value - min_price_value) / min_price_value * 100 if min_price_value > 0 else 0
+        
         if diff_pct > 0.2:  # Only show if difference is > 0.2%
-            logger.info(f"🔍 Potential arbitrage: Buy on {min_price[0]} (${min_price[1]['price']:.4f}) "
-                      f"and sell on {max_price[0]} (${max_price[1]['price']:.4f}) = {diff_pct:.2f}% diff")
+            logger.info(f"🔍 Potential arbitrage: Buy on {min_source} (${min_price_value:.4f}) "
+                      f"and sell on {max_source} (${max_price_value:.4f}) = {diff_pct:.2f}% diff")
     
     return dex_prices
