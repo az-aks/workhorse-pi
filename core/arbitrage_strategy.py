@@ -433,31 +433,67 @@ class ArbitrageStrategy:
             
             self.logger.info(f"Using {trade_percentage:.1f}% of portfolio for arbitrage: {trade_amount:.2f} {quote_token}")
             
-            # STEP 2: Execute buy order on the cheaper DEX
-            self.logger.info(f"Executing buy order on {buy_source} at {buy_price:.4f}")
+            # Determine if we're in paper or mainnet mode
+            trading_mode = self.config.get('trading', {}).get('mode', 'paper')
+            self.logger.info(f"Trading mode: {trading_mode}")
             
-            # In a real implementation, we would:
-            # 1. Get a quote from the DEX's API (e.g. Jupiter API for Jupiter)
-            # 2. Build and sign a transaction
-            # 3. Send the transaction and confirm it
+            # Get token addresses
+            base_token_mint = solana_client.token_addresses.get(base_token)
+            quote_token_mint = solana_client.token_addresses.get(quote_token)
             
-            # Calculate slippage based on the same model used in opportunity detection
-            buy_fee_pct = self.get_dex_fee(buy_source) / 100
-            sell_fee_pct = self.get_dex_fee(sell_source) / 100
+            if not base_token_mint or not quote_token_mint:
+                return {
+                    'success': False,
+                    'error': f'Missing token mint addresses for {base_token} or {quote_token}',
+                    'token_pair': token_pair
+                }
             
-            # Calculate slippage based on token liquidity (matching the estimate function)
-            slippage_pct = self.calculate_slippage(token_pair) / 100
+            # STEP 2: Execute buy order - use the source with the lower price
+            self.logger.info(f"STEP 2: Executing buy order on {buy_source} at {buy_price:.4f}")
             
-            # Here we'll use a placeholder for the trade execution with accurate fee modeling
-            base_token_amount = trade_amount / buy_price
-            # Apply buy-side fee and slippage
-            estimated_base_received = base_token_amount * (1 - buy_fee_pct) * (1 - slippage_pct)
+            # Execute the buy transaction
+            buy_result = await solana_client.buy_token(
+                amount_usd=trade_amount, 
+                token_symbol=base_token, 
+                quote_token=quote_token
+            )
+            
+            if not buy_result.get('success', False):
+                self.logger.error(f"Buy transaction failed: {buy_result.get('error', 'Unknown error')}")
+                return {
+                    'success': False, 
+                    'error': f"Buy transaction failed: {buy_result.get('error', 'Unknown error')}",
+                    'token_pair': token_pair,
+                    'details': buy_result
+                }
+                
+            # Get the amount of base token received from the buy transaction
+            base_token_amount = buy_result.get('output_amount', trade_amount / buy_price)
+            self.logger.info(f"Buy transaction successful! Received {base_token_amount:.6f} {base_token}")
             
             # STEP 3: Execute sell order on the more expensive DEX
-            self.logger.info(f"Executing sell order on {sell_source} at {sell_price:.4f}")
+            self.logger.info(f"STEP 3: Executing sell order on {sell_source} at {sell_price:.4f}")
             
-            # Apply sell-side fee and slippage
-            quote_token_received = estimated_base_received * sell_price * (1 - sell_fee_pct) * (1 - slippage_pct)
+            # Execute the sell transaction
+            sell_result = await solana_client.sell_token(
+                amount_token=base_token_amount,
+                token_symbol=base_token,
+                quote_token=quote_token
+            )
+            
+            if not sell_result.get('success', False):
+                self.logger.error(f"Sell transaction failed: {sell_result.get('error', 'Unknown error')}")
+                return {
+                    'success': False,
+                    'error': f"Sell transaction failed: {sell_result.get('error', 'Unknown error')}",
+                    'token_pair': token_pair,
+                    'buy_result': buy_result,
+                    'details': sell_result
+                }
+                
+            # Get the amount of quote token received from the sell transaction
+            quote_token_received = sell_result.get('output_amount', base_token_amount * sell_price)
+            self.logger.info(f"Sell transaction successful! Received {quote_token_received:.4f} {quote_token}")
             
             # Calculate actual profit
             profit_amount = quote_token_received - trade_amount
@@ -470,9 +506,14 @@ class ArbitrageStrategy:
                 'buy_source': buy_source,
                 'sell_source': sell_source,
                 'trade_amount': trade_amount,
+                'base_token_amount': base_token_amount,
+                'quote_token_received': quote_token_received,
                 'realized_profit': profit_amount,
                 'realized_profit_percentage': profit_percentage,
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat(),
+                'buy_transaction': buy_result.get('signature', 'paper-trade'),
+                'sell_transaction': sell_result.get('signature', 'paper-trade'),
+                'trading_mode': trading_mode
             }
             
             if profit_amount > 0:

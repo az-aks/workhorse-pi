@@ -8,13 +8,33 @@ wallet_path: "./kp.json"  # Path to your Solana keypair JSON file
 # Trading mode configuration
 trading:
   mode: "paper"  # Use "paper" for testing, "mainnet" for real trading
+  # Change to "mainnet" to enable real trades (requires wallet and funds)
+  # WARNING: "mainnet" mode will use real funds and execute actual trades!
   paper_balance: 1000   # Initial paper trading balance in USD
   token_symbol: "SOL"   # Default token symbol
   trade_amount: 100     # Default trade amount in USD
+  
+  # Mainnet trading settings (only used when mode = "mainnet")
+  mainnet:
+    # Maximum single trade size in USD
+    max_trade_size: 20  # Never risk more than $20 per trade
+    
+    # Minimum single trade size in USD
+    min_trade_size: 5   # Don't execute trades smaller than $5
+    
+    # Maximum daily volume in USD
+    max_daily_volume: 100  # Stop trading after $100 daily volume
 
 # Solana RPC configuration
 solana:
+  # Public RPC endpoints work but have rate limits and may be unreliable
+  # For production, consider using a paid RPC provider like:
+  # - QuickNode (https://www.quicknode.com)
+  # - Helius (https://helius.xyz)
+  # - Alchemy (https://www.alchemy.com)
   rpc_endpoint: "https://api.mainnet-beta.solana.com"  # Public RPC endpoint
+  # Alternative paid RPC endpoints:
+  # rpc_endpoint: "https://your-paid-rpc-provider-url.com"
   commitment: "confirmed"  # Transaction commitment level
 
 # DEX Arbitrage strategy configuration
