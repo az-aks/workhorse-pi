@@ -383,7 +383,8 @@ class ArbitrageBot:
         """Get recent trades."""
         if hasattr(self.strategy, 'get_trade_history'):
             trades = self.strategy.get_trade_history()
-            return trades[-limit:] if trades else []
+            # Return most recent trades first, limiting to 'limit'
+            return sorted(trades, key=lambda x: x.get('timestamp', ''), reverse=True)[:limit] if trades else []
         return []
     
     def start_trading(self):

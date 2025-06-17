@@ -47,7 +47,27 @@ A lightweight Python-based Solana trading bot optimized for Raspberry Pi with mi
    ```bash
    # Install additional dependencies for better websocket support
    pip install gevent gevent-websocket
-   
+   ```
+
+## Testing the Arbitrage Trades Panel
+
+To test the Arbitrage Trades panel with sample data, use the `test_trades.py` script:
+
+```bash
+# Make sure the main bot is running first
+python main.py
+
+# In a separate terminal, run the test script
+python test_trades.py --count 10 --error-rate 0.3 --wait 2
+```
+
+Options:
+- `--count`: Number of sample trades to generate (default: 5)
+- `--error-rate`: Percentage of trades that should fail (0.0-1.0, default: 0.3)
+- `--wait`: Seconds to wait between trades (default: 3)
+- `--server`: Server URL (default: http://localhost:5000)
+
+This script will generate random trades with a mix of successful and failed transactions, allowing you to test the UI's error handling, tooltips, and statistics display.
    # Then restart using the start script
    python start.py
    ```

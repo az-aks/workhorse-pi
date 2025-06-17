@@ -713,14 +713,16 @@ class ArbitrageStrategy:
         for trade in self.trade_history:
             # Create a copy with normalized fields
             enhanced_trade = {
-                'timestamp': trade.get('timestamp', ''),
+                'timestamp': trade.get('timestamp', datetime.now().isoformat()),
                 'token_pair': trade.get('token_pair', 'Unknown'),
                 'success': trade.get('success', False),
-                'realized_profit': trade.get('profit', 0),
+                # Handle realized_profit correctly (check both keys)
+                'realized_profit': trade.get('realized_profit', trade.get('profit', 0)),
                 # Default values for missing fields
-                'buy_source': trade.get('buy_source', ''),
-                'sell_source': trade.get('sell_source', ''),
-                'trade_amount': trade.get('trade_amount', 0)
+                'buy_source': trade.get('buy_source', 'Unknown'),
+                'sell_source': trade.get('sell_source', 'Unknown'),
+                'trade_amount': trade.get('trade_amount', 0),
+                'error': trade.get('error', '')
             }
             
             enhanced_history.append(enhanced_trade)

@@ -85,13 +85,42 @@ def api_trades():
 def api_price_history():
     """Get price history for charts."""
     bot = current_app.config['TRADING_BOT']
-    hours = request.args.get('hours', 24, type=int)
+    hours = request.args.get('hours', 24, type=float)  # Allow decimal hours (e.g., 1.5)
     
     try:
+        logger.info(f"Fetching price history for {hours} hours")
         history = bot.get_price_history(hours)
-        return jsonify(history)
+        
+        if not history:
+            logger.warning(f"No price history found for the last {hours} hours")
+            # Return empty array instead of synthetic data
+            return jsonify([])
+            
+        # Validate each point in the history
+        valid_history = []
+        for point in history:
+            if not isinstance(point, dict):
+                logger.warning(f"Skipping non-dict point: {point}")
+                continue
+                
+            if 'price' not in point or 'timestamp' not in point:
+                logger.warning(f"Skipping point missing price or timestamp: {point}")
+                continue
+                
+            # Ensure price is a number
+            try:
+                point['price'] = float(point['price'])
+            except (ValueError, TypeError):
+                logger.warning(f"Skipping point with invalid price: {point}")
+                continue
+                
+            valid_history.append(point)
+                
+        logger.info(f"Returning {len(valid_history)} valid price history points")
+        return jsonify(valid_history)
     except Exception as e:
-        logger.error(f"Error getting price history: {e}")
+        logger.error(f"Error getting price history: {e}", exc_info=True)
+        # Return error instead of synthetic data
         return jsonify({'error': str(e)}), 500
 
 
@@ -141,6 +170,38 @@ def api_config():
         }
     
     return jsonify(safe_config)
+
+
+@main_bp.route('/api/price-history-debug')
+def api_price_history_debug():
+    """Debug endpoint for price history."""
+    bot = current_app.config['TRADING_BOT']
+    hours = request.args.get('hours', 1.5, type=float)
+    
+    try:
+        history = bot.get_price_history(int(hours))
+        
+        # Add debugging info
+        debug_info = {
+            'requested_hours': hours,
+            'history_points': len(history) if history else 0,
+            'has_price_data': any(point.get('price') is not None for point in history) if history else False,
+            'timestamp_format': history[0].get('timestamp') if history and len(history) > 0 else None,
+            'price_sample': history[0].get('price') if history and len(history) > 0 else None,
+            'raw_history': history[:5]  # First 5 points for inspection
+        }
+        
+        return jsonify({
+            'debug_info': debug_info,
+            'history': history
+        })
+    except Exception as e:
+        logger.error(f"Error in price history debug endpoint: {e}")
+        import traceback
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
 
 
 @main_bp.errorhandler(404)

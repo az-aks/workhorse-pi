@@ -291,20 +291,120 @@ class TradingBot:
         """Get recent trades."""
         return self._trade_history[-limit:] if self._trade_history else []
     
-    def get_price_history(self, hours: int = 24) -> List[Dict]:
+    def get_price_history(self, hours: float = 24) -> List[Dict]:
         """Get price history for specified hours."""
+        self.logger.debug(f"Retrieving price history for {hours} hours")
+        
+        # If we have no price history, ask the price feed manager directly
+        if not self._price_history and hasattr(self, '_price_feed_manager'):
+            self.logger.info("No local price history, fetching from price feed manager")
+            try:
+                history = self._price_feed_manager.get_history(hours)
+                self.logger.info(f"Got {len(history)} price points from price feed manager")
+                
+                # If we still don't have any price history, return empty list
+                if not history:
+                    self.logger.warning("No price history available from price feed manager")
+                    return []
+                    
+                return history
+            except Exception as e:
+                self.logger.error(f"Error getting history from price feed manager: {e}")
+                return []
+        
         if not self._price_history:
+            self.logger.warning("No price history available, returning empty list")
             return []
         
-        cutoff_time = datetime.now() - timedelta(hours=hours)
+        try:
+            cutoff_time = datetime.now() - timedelta(hours=hours)
+            
+            filtered_history = []
+            for point in self._price_history:
+                try:
+                    if 'timestamp' not in point:
+                        continue
+                        
+                    if isinstance(point['timestamp'], str):
+                        # Handle ISO format timestamps with various suffixes
+                        timestamp_str = point['timestamp']
+                        if 'Z' in timestamp_str:
+                            timestamp_str = timestamp_str.replace('Z', '+00:00')
+                        point_time = datetime.fromisoformat(timestamp_str)
+                    else:
+                        point_time = point['timestamp']
+                        
+                    if point_time >= cutoff_time:
+                        filtered_history.append(point)
+                except (ValueError, TypeError) as e:
+                    self.logger.warning(f"Invalid timestamp format in price point: {e}")
+                    continue
+            
+            self.logger.info(f"Found {len(filtered_history)} price history points for {hours} hours")
+            
+            # If we don't have enough data points, just return what we have
+            if len(filtered_history) < 5:
+                self.logger.warning(f"Insufficient price history ({len(filtered_history)} points), returning available data")
+                
+            return filtered_history
+        except Exception as e:
+            self.logger.error(f"Error processing price history: {e}", exc_info=True)
+            return []
+            
+    def _generate_synthetic_price_history(self, hours: float = 24) -> List[Dict]:
+        """Generate synthetic price history when real data is not available."""
+        from datetime import datetime, timedelta
+        import random
         
-        filtered_history = []
-        for point in self._price_history:
-            point_time = datetime.fromisoformat(point['timestamp'].replace('Z', '+00:00').replace('+00:00', ''))
-            if point_time >= cutoff_time:
-                filtered_history.append(point)
+        self.logger.warning(f"Generating {hours} hours of synthetic price history")
         
-        return filtered_history
+        # Use current price as baseline if available, otherwise use a reasonable default
+        base_price = 100.0  # Default price if no reference is available
+        
+        # Try to get the current price from various sources
+        if hasattr(self, '_current_price') and self._current_price:
+            base_price = self._current_price
+        elif hasattr(self, '_price_feed_manager') and getattr(self._price_feed_manager, '_current_price', None):
+            base_price = self._price_feed_manager._current_price.get('price', 100.0)
+            
+        self.logger.info(f"Using base price {base_price} for synthetic data")
+            
+        # Generate synthetic price data
+        now = datetime.now()
+        history = []
+        
+        # Create a point every 5 minutes (12 per hour)
+        intervals = int(hours * 12)
+        
+        for i in range(intervals):
+            point_time = now - timedelta(minutes=5 * (intervals - i))
+            
+            # Add some random variation to the price to make it look realistic
+            # Earlier points have more variation to create a realistic trend
+            time_factor = i / intervals  # 0 to 1 as we approach now
+            variation_range = 0.05 * (1 - time_factor) + 0.01  # Decreases from 5% to 1% variation
+            variation = random.uniform(-variation_range, variation_range)
+            
+            # Create a slight trend
+            trend = 0.01 * time_factor  # 0 to 1% upward trend
+            
+            point_price = base_price * (1 + variation + trend)
+            
+            history.append({
+                'timestamp': point_time.isoformat(),
+                'price': point_price,
+                'source': 'synthetic'
+            })
+        
+        # Add the current price as the latest point
+        history.append({
+            'timestamp': now.isoformat(),
+            'price': base_price,
+            'source': 'current'
+        })
+        
+        self.logger.info(f"Generated {len(history)} synthetic price history points")
+        return history
     
     def get_last_update(self) -> Optional[str]:
         """Get timestamp of last update."""

@@ -485,8 +485,104 @@
                     <span style="color: #ef4444; margin-right: 5px; font-size: 1.5em;">●</span> Live
                 </div>
             </div>
-            <div style="height: 300px; padding: 1rem;" class="chart-container">
+            <div style="height: 300px; padding: 1rem; position: relative;" class="chart-container">
                 <canvas id="priceChart"></canvas>
+                <div id="chart-loading" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: rgba(13, 17, 47, 0.9); padding: 1.5rem; border-radius: 0.5rem; text-align: center; color: #a0a0b8; display: block; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); z-index: 10;">
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 0.75rem;">
+                        <div class="spinner" style="width: 30px; height: 30px; border: 3px solid rgba(20, 241, 149, 0.2); border-radius: 50%; border-top-color: #14f195; animation: spin 1s linear infinite;"></div>
+                        <div>Waiting for price data...</div>
+                        <div style="font-size: 0.85em; color: #a0a0b8; margin-top: 0.5em;">Chart will display when real data is available</div>
+                    </div>
+                </div>
+                <div id="chart-error" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: rgba(13, 17, 47, 0.8); padding: 1rem; border-radius: 0.5rem; text-align: center; color: #ef4444; display: none;">
+                    <div>Unable to load chart data</div>
+                    <div style="font-size: 0.85em; margin: 0.5rem 0;">Chart will display when real price data becomes available</div>
+                    <button onclick="updateChart()" style="margin-top: 10px; padding: 5px 10px; background-color: var(--primary); color: var(--background); border: none; border-radius: 4px; cursor: pointer;">Retry</button>
+                </div>            <style>
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+                
+                /* Tooltip styles */
+                .tooltip {
+                    position: relative;
+                    display: inline-flex;
+                    align-items: center;
+                    margin-left: 5px;
+                    cursor: help;
+                }
+                
+                .tooltip:hover::after {
+                    content: attr(data-tooltip);
+                    position: absolute;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    bottom: 100%;
+                    background-color: rgba(13, 17, 47, 0.95);
+                    color: #fff;
+                    text-align: left;
+                    border-radius: 4px;
+                    padding: 8px 12px;
+                    width: max-content;
+                    max-width: 350px;
+                    z-index: 100;
+                    font-size: 0.85rem;
+                    white-space: normal;
+                    border: 1px solid var(--error);
+                    box-shadow: 0 3px 15px rgba(0, 0, 0, 0.4);
+                    margin-bottom: 8px;
+                    line-height: 1.5;
+                    word-break: break-word;
+                }
+                
+                .info-icon {
+                    width: 16px;
+                    height: 16px;
+                    color: var(--error);
+                    filter: drop-shadow(0 0 2px rgba(239, 68, 68, 0.3));
+                }
+                
+                /* Trade row with error styling */
+                tr.has-error {
+                    background-color: rgba(239, 68, 68, 0.05);
+                    transition: all 0.2s;
+                    border-left: 2px solid var(--error);
+                }
+                
+                tr.has-error:hover {
+                    background-color: rgba(239, 68, 68, 0.1);
+                    transform: translateX(2px);
+                }
+                
+                /* Badge styles for error */
+                .badge-error {
+                    background-color: var(--error);
+                    color: white;
+                }
+                
+                /* Animation for failed trades */
+                @keyframes highlight-error {
+                    0% { background-color: rgba(239, 68, 68, 0); }
+                    50% { background-color: rgba(239, 68, 68, 0.2); }
+                    100% { background-color: rgba(239, 68, 68, 0.05); }
+                }
+                
+                tr.has-error.new-error {
+                    animation: highlight-error 1.5s ease-out;
+                }
+                
+                /* Animation for successful trades */
+                @keyframes highlight-success {
+                    0% { background-color: rgba(20, 241, 149, 0); }
+                    50% { background-color: rgba(20, 241, 149, 0.15); }
+                    100% { background-color: rgba(20, 241, 149, 0); }
+                }
+                
+                tr.new-success {
+                    animation: highlight-success 1.5s ease-out;
+                }
+            </style>
             </div>
         </div>
 
@@ -547,10 +643,38 @@
         <!-- Arbitrage Trades Section -->
         <div class="card">
             <div class="card-header">
-                <h2 class="card-title">Arbitrage Trades</h2>
-                <div>
-                    <span id="arbitrage-profit" class="badge badge-success">Total Profit: $0.00</span>
-                    <span id="arbitrage-count" class="badge badge-info">Trades: 0</span>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <svg style="width: 24px; height: 24px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M15 10l5 5-5 5"></path>
+                        <path d="M4 4v7a4 4 0 0 0 4 4h12"></path>
+                        <path d="M9 14l-5-5 5-5"></path>
+                        <path d="M20 20v-7a4 4 0 0 0-4-4H4"></path>
+                    </svg>
+                    <h2 class="card-title">Arbitrage Trades</h2>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <span id="arbitrage-profit" class="badge badge-success" style="display: flex; align-items: center;">
+                        <svg style="width: 16px; height: 16px; margin-right: 4px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+                        </svg>
+                        Total Profit: $0.00
+                    </span>
+                    <span id="arbitrage-count" class="badge badge-info" style="display: flex; align-items: center;">
+                        <svg style="width: 14px; height: 14px; margin-right: 4px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 3v18h18"></path>
+                            <path d="M18 17V9"></path>
+                            <path d="M13 17V5"></path>
+                            <path d="M8 17v-3"></path>
+                        </svg>
+                        Trades: 0
+                    </span>
+                    <span id="arbitrage-success-rate" class="badge badge-warning" style="display: flex; align-items: center;">
+                        <svg style="width: 14px; height: 14px; margin-right: 4px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                            <path d="M22 4L12 14.01l-3-3"></path>
+                        </svg>
+                        Success Rate: 0%
+                    </span>
                 </div>
             </div>
             <div style="max-height: 300px; overflow-y: auto; overflow-x: auto; -webkit-overflow-scrolling: touch;" class="table-container">
@@ -701,6 +825,12 @@
                     return;
                 }
                 
+                // Just log the current state (no synthetic data)
+                const statusBadge = document.getElementById('status-badge');
+                if (statusBadge && statusBadge.textContent === 'Initializing') {
+                    console.log('🤖 Bot is in initializing state - will attempt to get real price data only');
+                }
+                
                 if (chartTitleElement) {
                     chartTitleElement.textContent = 'SOL Price Chart (1 Hour - Loading...)';
                 }
@@ -770,35 +900,21 @@
                     console.log(`Chart updated with 1-hour data ending now.`);
 
                 } else {
-                    console.warn('No price history data for 1hr chart, trying current price...');
-                    try {
-                        const priceResponse = await fetch('/api/price');
-                        const priceData = await priceResponse.json();
-                        if (priceData && priceData.price) {
-                            prices[12] = priceData.price; // Place current price at the end
+                    console.warn('No price history data available for chart');
+                    // Don't show any data, just indicate there's no data
+                    priceChart.data.labels = newTimeSlots;
+                    priceChart.data.datasets[0].data = Array(13).fill(null); // Empty data
+                    priceChart.data.datasets[1].data = Array(13).fill(null); // Empty dot
+                    priceChart.update('none');
 
-                            priceChart.data.labels = newTimeSlots;
-                            priceChart.data.datasets[0].data = prices; // prices array is mostly null except last point
-                            priceChart.data.datasets[1].data = Array(13).fill(null);
-                            priceChart.data.datasets[1].data[12] = priceData.price;
-                            priceChart.update('none');
-
-                            if (chartTitleElement) {
-                                chartTitleElement.textContent = 'SOL Price Chart (Current Price Only)';
-                            }
-                            console.log('Chart updated with current price at the end');
-                        } else {
-                            console.warn('Fallback price fetch did not return a valid price for 1hr chart.');
-                            if (chartTitleElement) {
-                                chartTitleElement.textContent = 'SOL Price Chart (No Data)';
-                            }
-                        }
-                    } catch (fallbackError) {
-                        console.error('Failed to get current price as fallback for 1hr chart:', fallbackError);
-                        if (chartTitleElement) {
-                            chartTitleElement.textContent = 'SOL Price Chart (Error Fetching Price)';
-                        }
+                    if (chartTitleElement) {
+                        chartTitleElement.textContent = 'SOL Price Chart (No Data Yet)';
                     }
+                    console.log('Chart updated to show no data state');
+                    
+                    // Hide loading indicator
+                    const loadingElement = document.getElementById('chart-loading');
+                    if (loadingElement) loadingElement.style.display = 'none';
                 }
             } catch (error) {
                 console.error('Error updating 1hr chart:', error);
@@ -808,6 +924,7 @@
             }
         }
 
+        
         // Aggregates raw price data into 5-minute intervals
         function aggregateToFiveMinutes(rawData) {
             const intervals = {};
@@ -1057,6 +1174,11 @@
             document.getElementById('connection-status').innerHTML = '<span style=\"color: var(--error);\">●</span> Connection Failed';
             updateTradingStatus(false, 'Error');
             statusBadge.className = 'status-badge status-stopped';
+        });
+
+        // Debug: Log ALL incoming Socket.IO events
+        socket.onAny((eventName, ...args) => {
+            console.log('🔔 Socket.IO event received:', eventName, args);
         });
 
         socket.on('price_update', function(data) {
@@ -1384,18 +1506,47 @@
 
         // Function to handle arbitrage trade updates
         function updateArbitrageTrades(data) {
+            console.log('🛠️ Starting updateArbitrageTrades with data:', data);
+            
             if (!data || !data.trades || !Array.isArray(data.trades)) {
-                console.log('No arbitrage trade data available');
+                console.log('❌ No arbitrage trade data available');
                 return;
             }
+            
+            console.log('🔍 Found trades array with length:', data.trades.length);
 
             const tableBody = document.getElementById('arbitrage-trades-table');
             const profitElement = document.getElementById('arbitrage-profit');
             const countElement = document.getElementById('arbitrage-count');
+            const successRateElement = document.getElementById('arbitrage-success-rate');
             
-            // Update the summary metrics
-            profitElement.textContent = `Total Profit: $${data.total_profit.toFixed(2)}`;
-            countElement.textContent = `Trades: ${data.trades.length}`;
+            // Calculate total profit safely
+            const totalProfit = typeof data.total_profit === 'number' ? 
+                data.total_profit : 
+                data.trades.reduce((sum, trade) => sum + (parseFloat(trade.realized_profit) || 0), 0);
+            
+            // Format with thousands separator and two decimal places
+            const formattedProfit = new Intl.NumberFormat('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(totalProfit);
+            
+            // Update profit badge
+            profitElement.textContent = `Total Profit: $${formattedProfit}`;
+            profitElement.className = `badge ${totalProfit >= 0 ? 'badge-success' : 'badge-error'}`;
+            
+            // Calculate successful trades percentage if available
+            const successfulTrades = data.successful_trades || 
+                data.trades.filter(t => t.success).length;
+            const totalTrades = data.trades.length;
+            
+            // Format count to show successful/total
+            countElement.textContent = `Trades: ${successfulTrades}/${totalTrades}`;
+            
+            // Calculate and display success rate
+            const successRate = totalTrades > 0 ? 
+                Math.round((successfulTrades / totalTrades) * 100) : 0;
+            successRateElement.textContent = `Success Rate: ${successRate}%`;
             
             // Clear the table
             tableBody.innerHTML = '';
@@ -1410,31 +1561,108 @@
             
             // Sort trades by timestamp (newest first)
             const sortedTrades = [...data.trades].sort((a, b) => {
-                return new Date(b.timestamp) - new Date(a.timestamp);
+                return new Date(b.timestamp || b.time || 0) - new Date(a.timestamp || a.time || 0);
+            });
+            
+            // Track trade IDs to detect new trades
+            const existingTradeIds = new Set();
+            document.querySelectorAll('#arbitrage-trades-table tr[data-trade-id]').forEach(row => {
+                existingTradeIds.add(row.dataset.tradeId);
             });
             
             // Add each trade to the table
             sortedTrades.forEach(trade => {
                 const row = document.createElement('tr');
                 
-                // Format the timestamp
-                const tradeTime = new Date(trade.timestamp);
-                const timeFormatted = tradeTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+                // Format the timestamp - handle various timestamp formats
+                let tradeTime;
+                try {
+                    tradeTime = new Date(trade.timestamp || trade.time);
+                    if (isNaN(tradeTime.getTime())) {
+                        // If the date is invalid, use current time as fallback
+                        console.warn('Invalid trade timestamp, using current time');
+                        tradeTime = new Date();
+                    }
+                } catch (e) {
+                    console.warn('Error parsing trade timestamp:', e);
+                    tradeTime = new Date();
+                }
                 
-                // Set the status class
-                const statusClass = trade.success ? 'text-success' : 'text-error';
-                const statusText = trade.success ? '✅ Success' : '❌ Failed';
+                // Format time with padding for consistent width
+                const timeFormatted = tradeTime.toLocaleTimeString([], {
+                    hour: '2-digit', 
+                    minute: '2-digit', 
+                    second: '2-digit'
+                });
+                
+                // Determine trade success status with fallbacks
+                const isSuccess = trade.success === true;
                 
                 // Create the row HTML
+                // Check if there's an error to display
+                const hasError = !isSuccess && (trade.error || trade.error_message);
+                const errorMessage = trade.error || trade.error_message || 'Unknown error occurred';
+                
+                // Create tooltip with error details
+                const errorTooltip = hasError ? 
+                    `<span class="tooltip" data-tooltip="${errorMessage.replace(/"/g, '&quot;')}">
+                        <svg class="info-icon" viewBox="0 0 20 20">
+                            <circle cx="10" cy="10" r="9" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                            <text x="10" y="14" text-anchor="middle" font-size="14" fill="currentColor">i</text>
+                        </svg>
+                    </span>` : '';
+                
+                // Determine status display
+                const statusClass = isSuccess ? 'text-success' : 'text-error';
+                const statusText = isSuccess ? '✅ Success' : '❌ Failed';
+                
+                // Create unique ID for this trade based on its properties
+                const tradeId = `${trade.timestamp || trade.time || Date.now()}-${trade.token_pair || ''}-${trade.buy_source || ''}-${trade.sell_source || ''}`;
+                row.dataset.tradeId = tradeId;
+                
+                // Check if this is a new trade
+                const isNewTrade = !existingTradeIds.has(tradeId);
+                
+                // Create the row with enhanced status cell for failed trades
                 row.innerHTML = `
                     <td>${timeFormatted}</td>
-                    <td>${trade.token_pair}</td>
-                    <td>${trade.buy_source}</td>
-                    <td>${trade.sell_source}</td>
-                    <td>$${parseFloat(trade.trade_amount).toFixed(2)}</td>
-                    <td class="${trade.realized_profit > 0 ? 'text-success' : 'text-error'}">$${parseFloat(trade.realized_profit).toFixed(4)}</td>
-                    <td class="${statusClass}">${statusText}</td>
+                    <td>${trade.token_pair || trade.pair || 'Unknown'}</td>
+                    <td>${trade.buy_source || trade.buy_dex || 'N/A'}</td>
+                    <td>${trade.sell_source || trade.sell_dex || 'N/A'}</td>
+                    <td>$${parseFloat(trade.trade_amount || trade.amount || 0).toFixed(2)}</td>
+                    <td class="${(parseFloat(trade.realized_profit || trade.profit || 0) > 0) ? 'text-success' : 'text-error'}">
+                        $${parseFloat(trade.realized_profit || trade.profit || 0).toFixed(4)}
+                    </td>
+                    <td class="${statusClass}">
+                        ${statusText} ${errorTooltip}
+                    </td>
                 `;
+                
+                // Add hover effect and pointer cursor for rows with error details
+                if (hasError) {
+                    row.classList.add('has-error');
+                    row.title = "Click for error details";
+                    row.style.cursor = "pointer";
+                    
+                    // Add click handler to show error details
+                    row.addEventListener('click', () => {
+                        showTradeErrorToast(errorMessage);
+                    });
+                }
+                
+                // Add highlight animation for new trades
+                if (isNewTrade) {
+                    if (hasError) {
+                        row.classList.add('new-error');
+                    } else {
+                        row.classList.add('new-success');
+                    }
+                    
+                    // Remove the animation class after it completes
+                    setTimeout(() => {
+                        row.classList.remove('new-error', 'new-success');
+                    }, 2000);
+                }
                 
                 tableBody.appendChild(row);
             });
@@ -1442,8 +1670,21 @@
 
         // Listen for arbitrage trade updates from the server
         socket.on('arbitrage_update', function(data) {
-            console.log('📊 Received arbitrage_update:', data);
+            const tradeCount = data?.trades?.length || 0;
+            const successCount = data?.trades?.filter(t => t.success).length || 0;
+            const profit = data?.total_profit || 0;
+            
+            console.log(`📊 Received arbitrage_update: ${tradeCount} trades (${successCount} successful), $${profit.toFixed(2)} profit`);
+            console.log('Full arbitrage_update data:', JSON.stringify(data));
+            
+            // Update the UI with the new trade data
             updateArbitrageTrades(data);
+            
+            // Debug: Log the table content after update
+            setTimeout(() => {
+                const tableBody = document.getElementById('arbitrage-trades-table');
+                console.log('Arbitrage trades table after update:', tableBody.innerHTML);
+            }, 100);
         });
 
         // Toast notification system

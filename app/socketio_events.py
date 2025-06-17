@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Track connected clients
 connected_clients = set()
-MAX_CLIENTS = 1  # Limit to 1 client at a time
+MAX_CLIENTS = 2  # Allow multiple clients for testing (browser + test script)
 
 
 def setup_socketio_events(socketio, trading_bot):
@@ -135,16 +135,25 @@ def setup_socketio_events(socketio, trading_bot):
                     # Add arbitrage trade information if available
                     if hasattr(trading_bot, 'strategy') and hasattr(trading_bot.strategy, 'get_trade_history'):
                         try:
+                            trades = trading_bot.strategy.get_trade_history()
+                            total_profit = trading_bot.strategy.total_profit if hasattr(trading_bot.strategy, 'total_profit') else 0.0
+                            
+                            # Calculate trades count and successful trades
+                            trades_executed = len(trades) if trades else 0
+                            successful_trades = sum(1 for trade in trades if trade.get('success', False)) if trades else 0
+                            
                             arbitrage_data = {
-                                'trades': trading_bot.strategy.get_trade_history(),
-                                'total_profit': trading_bot.strategy.total_profit if hasattr(trading_bot.strategy, 'total_profit') else 0.0,
-                                'trades_executed': trading_bot.strategy.trades_executed if hasattr(trading_bot.strategy, 'trades_executed') else 0
+                                'trades': trades,
+                                'total_profit': total_profit,
+                                'trades_executed': trades_executed,
+                                'successful_trades': successful_trades
                             }
-                            # Emit arbitrage trade data separately
-                            emit('arbitrage_update', arbitrage_data)
-                            logger.info(f"Emitted arbitrage_update with {len(arbitrage_data['trades'])} trades")
+                            
+                            # Emit arbitrage trade data separately (use socketio.emit for background tasks)
+                            socketio.emit('arbitrage_update', arbitrage_data)
+                            logger.info(f"Emitted arbitrage_update with {len(arbitrage_data['trades'])} trades, total profit: ${total_profit:.2f}")
                         except Exception as e:
-                            logger.error(f"Error getting arbitrage trade data: {e}")
+                            logger.error(f"Error getting arbitrage trade data: {e}", exc_info=True)
                 except Exception as e:
                     logger.error(f"Error using get_status() for status_payload: {e}")
                     # Fall back to manually constructed payload
@@ -319,3 +328,32 @@ def setup_socketio_events(socketio, trading_bot):
             
     # Make this function available to other modules
     trading_bot.report_trade_error = report_trade_error
+    
+    # Debug: Handle arbitrage_update events from clients (like test script)
+    @socketio.on('arbitrage_update')
+    def handle_client_arbitrage_update(data):
+        """Handle arbitrage_update events from clients (e.g., test script)."""
+        logger.info(f"🔄 Received arbitrage_update from client: {data}")
+        # Re-emit to all other clients (including browser)
+        socketio.emit('arbitrage_update', data)
+        logger.info(f"🔄 Re-emitted arbitrage_update to all clients")
+    
+    @socketio.on('trade_error')  
+    def handle_client_trade_error(data):
+        """Handle trade_error events from clients (e.g., test script)."""
+        logger.info(f"🔄 Received trade_error from client: {data}")
+        # Re-emit to all other clients (including browser)
+        socketio.emit('trade_error', data)
+        logger.info(f"🔄 Re-emitted trade_error to all clients")
+    
+    # Debug: Log all incoming events from clients
+    @socketio.on_error_default
+    def default_error_handler(e):
+        logger.error(f"SocketIO error: {e}")
+    
+    # This will catch any events not explicitly handled
+    def catch_all_events(event, *args):
+        logger.info(f"🔔 Received unknown event '{event}' with args: {args}")
+    
+    # Register catch-all for debugging
+    socketio.on_event('*', catch_all_events)

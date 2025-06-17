@@ -25,10 +25,12 @@ pyopenssl>=23.0.0
 # WebSocket / SocketIO dependencies
 gevent>=22.10.2
 gevent-websocket>=0.10.1
+python-socketio[client]>=5.9.0  # For both server and client (test_trades.py)
 
 # Utilities
 python-dotenv>=1.0.0
 schedule>=1.2.0
+argparse>=1.4.0 # For test_trades.py arguments
 
 # Optional (for advanced features)
 ta>=0.10.0  # Technical analysis
