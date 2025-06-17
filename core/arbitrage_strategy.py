@@ -321,6 +321,10 @@ class ArbitrageStrategy:
                     'sell_price': trade_result.get('sell_price', 0)
                 }
                 self.trade_history.append(trade_record)
+                
+                # Emit callback to trading bot for real-time UI updates
+                if hasattr(self.trading_bot, '_emit_callback'):
+                    self.trading_bot._emit_callback('trade_executed', trade_record)
         else:
             # Get the error message
             error_msg = trade_result.get('error', 'Unknown error')
@@ -340,6 +344,10 @@ class ArbitrageStrategy:
                 'sell_price': trade_result.get('sell_price', 0)
             }
             self.trade_history.append(trade_record)
+            
+            # Emit callback to trading bot for real-time UI updates (even for failed trades)
+            if hasattr(self.trading_bot, '_emit_callback'):
+                self.trading_bot._emit_callback('trade_executed', trade_record)
             
             # Report the error to the UI if the function is available
             if hasattr(self, 'trading_bot') and hasattr(self.trading_bot, 'report_trade_error'):

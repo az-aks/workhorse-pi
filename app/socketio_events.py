@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Track connected clients
 connected_clients = set()
-MAX_CLIENTS = 2  # Allow multiple clients for testing (browser + test script)
+MAX_CLIENTS = 1  # Only allow 1 client - single instance control
 
 
 def setup_socketio_events(socketio, trading_bot):
@@ -26,7 +26,7 @@ def setup_socketio_events(socketio, trading_bot):
         
         # Check if we already have the maximum number of clients
         if len(connected_clients) >= MAX_CLIENTS and client_sid not in connected_clients:
-            logger.warning(f"Connection rejected - maximum of {MAX_CLIENTS} client already connected")
+            logger.warning(f"Connection rejected - maximum of {MAX_CLIENTS} client allowed (single instance control)")
             # Disconnect this client
             return False
         

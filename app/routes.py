@@ -204,6 +204,31 @@ def api_price_history_debug():
         }), 500
 
 
+@main_bp.route('/api/test-trades', methods=['POST'])
+def inject_test_trades():
+    """Inject test trades for UI testing (single instance safe)."""
+    bot = current_app.config.get('TRADING_BOT')
+    if not bot:
+        return jsonify({'error': 'Trading bot not available'}), 503
+    
+    try:
+        # Get count from request, default to 5
+        count = int(request.json.get('count', 5)) if request.json else 5
+        count = max(1, min(count, 20))  # Limit between 1 and 20
+        
+        # Inject test trades
+        bot.inject_test_trades(count)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully injected {count} test trades',
+            'count': count
+        })
+    except Exception as e:
+        logger.error(f"Error injecting test trades: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @main_bp.errorhandler(404)
 def not_found(error):
     """Handle 404 errors."""

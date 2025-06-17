@@ -387,6 +387,73 @@ class ArbitrageBot:
             return sorted(trades, key=lambda x: x.get('timestamp', ''), reverse=True)[:limit] if trades else []
         return []
     
+    def inject_test_trades(self, count=5):
+        """Inject test trades for UI testing (single instance safe)."""
+        import random
+        import datetime
+        
+        self.logger.info(f"🧪 Injecting {count} test trades for UI testing")
+        
+        tokens = ['SOL/USDC', 'ETH/USDC', 'BTC/USDC', 'BONK/USDC', 'JTO/USDC', 'WIF/USDC']
+        venues = ['jupiterV6', 'raydium', 'orca', 'openbook', 'phoenix', 'meteora']
+        errors = [
+            'Slippage exceeded maximum tolerance',
+            'Insufficient liquidity for trade size',
+            'RPC node timeout during transaction',
+            'Price moved too quickly, arbitrage opportunity lost'
+        ]
+        
+        for i in range(count):
+            is_success = random.random() > 0.2  # 80% success rate
+            token_pair = random.choice(tokens)
+            buy_venue = random.choice(venues)
+            sell_venue = random.choice([v for v in venues if v != buy_venue])
+            amount = round(random.uniform(500, 5000), 2)
+            profit = round(amount * random.uniform(0.0005, 0.005), 4) if is_success else 0
+            
+            trade = {
+                'timestamp': datetime.datetime.now().isoformat(),
+                'token_pair': token_pair,
+                'buy_source': buy_venue,
+                'sell_source': sell_venue,
+                'success': is_success,
+                'realized_profit': profit,
+                'trade_amount': amount,
+                'buy_price': round(random.uniform(10, 1000), 3),
+                'sell_price': round(random.uniform(10, 1000), 3),
+            }
+            
+            if not is_success:
+                trade['error'] = random.choice(errors)
+            
+            # Add to strategy's trade history
+            if hasattr(self.strategy, 'trade_history'):
+                self.strategy.trade_history.append(trade)
+                self.strategy.total_profit += profit
+                
+                # Also emit the trade_executed callback for real-time UI updates
+                if hasattr(self, '_emit_callback'):
+                    self._emit_callback('trade_executed', trade)
+                
+            self.logger.info(f"🧪 Injected test trade {i+1}: {token_pair} - {'Success' if is_success else 'Failed'}")
+        
+        # Trigger status update to refresh UI (avoid event loop issues)
+        try:
+            if hasattr(self, 'socketio') and self.socketio:
+                # Emit arbitrage update directly via socketio
+                arbitrage_data = {
+                    'trades': self.strategy.get_trade_history() if hasattr(self.strategy, 'get_trade_history') else [],
+                    'total_profit': getattr(self.strategy, 'total_profit', 0.0),
+                    'trades_executed': len(self.strategy.trade_history) if hasattr(self.strategy, 'trade_history') else 0,
+                    'successful_trades': sum(1 for t in self.strategy.trade_history if t.get('success', False)) if hasattr(self.strategy, 'trade_history') else 0
+                }
+                self.socketio.emit('arbitrage_update', arbitrage_data)
+                self.logger.info("🧪 Emitted arbitrage_update for test trades")
+        except Exception as e:
+            self.logger.warning(f"Could not emit arbitrage_update for test trades: {e}")
+            
+        self.logger.info(f"🧪 Test trade injection complete. UI should now show trades.")
+    
     def start_trading(self):
         """API compatibility method for starting trading."""
         # Already handled by main start method
