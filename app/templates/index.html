@@ -486,6 +486,7 @@
                         <div class="timeframe-controls" style="display: flex; gap: 5px;">
                             <button id="chart-1h" class="timeframe-btn active" onclick="switchTimeframe('1h')" style="padding: 5px 12px; background-color: var(--primary); color: var(--background); border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em;">1H</button>
                             <button id="chart-12h" class="timeframe-btn" onclick="switchTimeframe('12h')" style="padding: 5px 12px; background-color: transparent; color: var(--text-muted); border: 1px solid var(--text-muted); border-radius: 4px; cursor: pointer; font-size: 0.85em;">12H</button>
+                            <button onclick="debugChart()" style="padding: 5px 12px; background-color: var(--warning); color: var(--background); border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em;">🔧 Debug</button>
                         </div>
                         <div style="display: flex; align-items: center;">
                             <span style="color: #ef4444; margin-right: 5px; font-size: 1.5em;">●</span> Live
@@ -892,10 +893,41 @@
                             }
                         }
                     }
+                    
+                    // Fallback: if no data was matched to slots but we have data, put the most recent in the last slot
+                    if (prices.every(p => p === null) && thirtyMinData.length > 0) {
+                        console.log('No data matched time slots, using most recent data in last slot as fallback');
+                        const mostRecent = thirtyMinData[thirtyMinData.length - 1];
+                        prices[24] = mostRecent.price;
+                    }
+                    
+                    // Chart.js workaround: if we only have one data point, duplicate it to adjacent slots so it's visible
+                    const nonNullCount = prices.filter(p => p !== null).length;
+                    if (nonNullCount === 1) {
+                        console.log('Only one data point found, duplicating to adjacent slots for visibility');
+                        const singleValue = prices.find(p => p !== null);
+                        const singleIndex = prices.findIndex(p => p !== null);
+                        
+                        // Add the same value to adjacent time slots to make the line visible
+                        if (singleIndex > 0) prices[singleIndex - 1] = singleValue;
+                        if (singleIndex < 24) prices[singleIndex + 1] = singleValue;
+                        console.log('Extended single data point to adjacent slots for line visibility');
+                    }
+                    
                     console.log('Prices for 12hr chart:', prices);
                     
                     priceChart.data.labels = newTimeSlots;
                     priceChart.data.datasets[0].data = prices;
+                    
+                    // Adjust point radius based on data density for better visibility
+                    const dataPointCount = prices.filter(p => p !== null).length;
+                    if (dataPointCount <= 3) {
+                        priceChart.data.datasets[0].pointRadius = 6; // Larger points for sparse data
+                        priceChart.data.datasets[0].pointHoverRadius = 8;
+                    } else {
+                        priceChart.data.datasets[0].pointRadius = 3; // Normal points for dense data
+                        priceChart.data.datasets[0].pointHoverRadius = 5;
+                    }
                     
                     // Update current time dot (last position is index 24)
                     const currentPriceForDot = prices[24]; 
@@ -909,19 +941,65 @@
                         chartTitleElement.textContent = 'SOL Price Chart (12 Hours)';
                     }
                     console.log(`Chart updated with 12-hour data ending now.`);
+                    
+                    // Hide loading indicator
+                    const loadingElement = document.getElementById('chart-loading');
+                    if (loadingElement) loadingElement.style.display = 'none';
 
                 } else {
                     console.warn('No price history data available for chart');
-                    // Don't show any data, just indicate there's no data
-                    priceChart.data.labels = newTimeSlots;
-                    priceChart.data.datasets[0].data = Array(25).fill(null); // Empty data
-                    priceChart.data.datasets[1].data = Array(25).fill(null); // Empty dot
-                    priceChart.update('none');
+                    
+                    // Try to get current price as fallback
+                    try {
+                        const currentPriceResponse = await fetch('/api/price');
+                        const currentPriceData = await currentPriceResponse.json();
+                        console.log('Fallback: Current price data:', currentPriceData);
+                        
+                        if (currentPriceData && currentPriceData.price) {
+                            // Show current price in the last slot
+                            priceChart.data.labels = newTimeSlots;
+                            priceChart.data.datasets[0].data = Array(25).fill(null);
+                            priceChart.data.datasets[0].data[24] = currentPriceData.price; // Show current price in last slot
+                            
+                            // Also show the blinking dot
+                            priceChart.data.datasets[1].data = Array(25).fill(null);
+                            priceChart.data.datasets[1].data[24] = currentPriceData.price;
+                            
+                            priceChart.update('none');
+                            
+                            if (chartTitleElement) {
+                                chartTitleElement.textContent = 'SOL Price Chart (Current Price Only)';
+                            }
+                            console.log('Chart updated with current price fallback');
+                            
+                            // Hide loading indicator
+                            const loadingElement = document.getElementById('chart-loading');
+                            if (loadingElement) loadingElement.style.display = 'none';
+                        } else {
+                            // No data at all
+                            priceChart.data.labels = newTimeSlots;
+                            priceChart.data.datasets[0].data = Array(25).fill(null); // Empty data
+                            priceChart.data.datasets[1].data = Array(25).fill(null); // Empty dot
+                            priceChart.update('none');
 
-                    if (chartTitleElement) {
-                        chartTitleElement.textContent = 'SOL Price Chart (No Data Yet)';
+                            if (chartTitleElement) {
+                                chartTitleElement.textContent = 'SOL Price Chart (No Data Yet)';
+                            }
+                            console.log('Chart updated to show no data state');
+                        }
+                    } catch (fallbackError) {
+                        console.error('Error fetching current price fallback:', fallbackError);
+                        // Fall back to no data state
+                        priceChart.data.labels = newTimeSlots;
+                        priceChart.data.datasets[0].data = Array(25).fill(null); // Empty data
+                        priceChart.data.datasets[1].data = Array(25).fill(null); // Empty dot
+                        priceChart.update('none');
+
+                        if (chartTitleElement) {
+                            chartTitleElement.textContent = 'SOL Price Chart (No Data Yet)';
+                        }
+                        console.log('Chart updated to show no data state after fallback error');
                     }
-                    console.log('Chart updated to show no data state');
                     
                     // Hide loading indicator
                     const loadingElement = document.getElementById('chart-loading');
@@ -935,6 +1013,48 @@
             }
         }
 
+        
+        // Debug function for chart troubleshooting
+        async function debugChart() {
+            console.log('🔧 Chart Debug Information:');
+            console.log('Chart initialized:', !!priceChart);
+            
+            try {
+                // Test price history API
+                console.log('📊 Testing /api/price-history...');
+                const historyResponse = await fetch('/api/price-history?hours=12.5');
+                const historyData = await historyResponse.json();
+                console.log('Price history response:', historyData);
+                
+                // Test current price API
+                console.log('💰 Testing /api/price...');
+                const priceResponse = await fetch('/api/price');
+                const priceData = await priceResponse.json();
+                console.log('Current price response:', priceData);
+                
+                // Test status API
+                console.log('📈 Testing /api/status...');
+                const statusResponse = await fetch('/api/status');
+                const statusData = await statusResponse.json();
+                console.log('Status response:', statusData);
+                
+                // Chart data inspection
+                if (priceChart) {
+                    console.log('📈 Chart data:');
+                    console.log('  Labels:', priceChart.data.labels.length, 'items');
+                    console.log('  Dataset 0 (price):', priceChart.data.datasets[0].data.filter(x => x !== null).length, 'non-null values');
+                    console.log('  Dataset 1 (dot):', priceChart.data.datasets[1].data.filter(x => x !== null).length, 'non-null values');
+                    console.log('  Sample prices:', priceChart.data.datasets[0].data.slice(-5));
+                }
+                
+                // Force a chart update
+                console.log('🔄 Forcing chart update...');
+                await updateChart();
+                
+            } catch (error) {
+                console.error('❌ Debug error:', error);
+            }
+        }
         
         // Aggregates raw price data into 30-minute intervals (optimized for Pi)
         function aggregateToThirtyMinutes(rawData) {
@@ -1198,35 +1318,20 @@
                 document.getElementById('current-price').textContent = `$${parseFloat(data.price).toFixed(2)}`;
                 
                 // Update the chart's last point if it's a live update
-                if (priceChart && priceChart.data.datasets[0].data.length === 13) {
+                if (priceChart && priceChart.data.datasets[0].data.length === 25) {
                     const prices = priceChart.data.datasets[0].data;
-                    prices[12] = parseFloat(data.price);
+                    prices[24] = parseFloat(data.price); // Last point (index 24)
                     priceChart.data.datasets[0].data = prices;
 
                     // Also update the blinking dot's Y value
                     priceChart.data.datasets[1].data[24] = parseFloat(data.price);
                     
-                    // Shift data if needed or just update last point and labels
-                    // For simplicity, we'll rely on the periodic updateChart for full history refresh
-                    // and this just updates the very latest price point.
-                    // To make the chart scroll, we would shift labels and data here.
-                    // For now, let's ensure the last label reflects current time if it's a new minute.
-                    const lastLabel = priceChart.data.labels[12];
+                    // Update the last label to reflect current time
                     const currentMinuteLabel = new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
-                    if (lastLabel !== currentMinuteLabel) {
-                        // If the minute has changed, it's better to call updateChart for a full refresh
-                        // to correctly realign all time slots.
-                        // However, a quick update to the last label can be done:
-                        // priceChart.data.labels[12] = currentMinuteLabel;
-                        // priceChart.data.labels.shift();
-                        // priceChart.data.labels.push(currentMinuteLabel);
-                        // priceChart.data.datasets[0].data.shift();
-                        // priceChart.data.datasets[0].data.push(parseFloat(data.price));
-                        // priceChart.data.datasets[1].data.shift();
-                        // priceChart.data.datasets[1].data.push(parseFloat(data.price));
-                        // For now, let updateChart handle the time progression to keep it simpler.
-                    }
+                    priceChart.data.labels[24] = currentMinuteLabel;
+                    
                     priceChart.update('none');
+                    console.log('📈 Updated chart with live price:', data.price);
                 }
             }
         });
@@ -1291,6 +1396,16 @@
                         updateRecentTrades(trade);
                     });
                 }
+                
+                // ALSO update the Arbitrage Trades panel with the same data
+                // since recent_trades comes from the same source as arbitrage trades
+                console.log('🔄 Also updating Arbitrage Trades panel from status_update');
+                updateArbitrageTrades({
+                    trades: data.recent_trades,
+                    total_profit: data.total_pnl || 0,
+                    trades_executed: data.trades_executed || 0,
+                    successful_trades: data.recent_trades.filter(t => t.success).length
+                });
             }
         });
 
@@ -1408,17 +1523,14 @@
             }
         }, 60000);
         
-        // Update chart every 2 minutes
-        setInterval(updateChart, 120000);
-        
         // DOMContentLoaded event listener
         document.addEventListener('DOMContentLoaded', function() {
             console.log('🎉 DOM fully loaded and parsed');
             initChart();
             updateChart(); // Initial call to fetch chart data (history and current)
             
-            // Set up periodic updates for the chart
-            setInterval(updateChart, 60 * 1000); // Update chart every 60 seconds
+            // Set up periodic updates for the chart (every 60 seconds)
+            setInterval(updateChart, 60 * 1000);
             
             // Initial call to set button state correctly
             updateTradingStatus(isTradingActive);

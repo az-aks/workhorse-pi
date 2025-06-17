@@ -255,17 +255,49 @@ def setup_socketio_events(socketio, trading_bot):
     def on_price_update(price_data):
         """Callback for price updates."""
         socketio.emit('price_update', price_data)
+        logger.debug(f"Emitted price_update: {price_data}")
     
     def on_trade_executed(trade_data):
-        """Callback for new trades."""
-        socketio.emit('trade_update', trade_data) # Changed from trade_executed to match frontend
-        # Also send updated portfolio and potentially overall status
-        # This might be better handled by the bot emitting a full status_change
-        # try:
-        #     portfolio = trading_bot.get_portfolio()
-        #     socketio.emit('portfolio_update', portfolio)
-        # except Exception as e:
-        #     logger.error(f"Error sending portfolio update: {e}")
+        """Callback for new trades - triggers arbitrage panel update."""
+        logger.info(f"🔔 SocketIO on_trade_executed callback received: {trade_data}")
+        
+        # Get updated trade history and summary from the strategy
+        try:
+            if hasattr(trading_bot, 'strategy') and hasattr(trading_bot.strategy, 'get_trade_history'):
+                trades = trading_bot.strategy.get_trade_history()
+                logger.info(f"🔔 Retrieved {len(trades)} trades from strategy")
+                
+                # Get performance metrics from the strategy
+                if hasattr(trading_bot.strategy, 'get_performance_metrics'):
+                    perf_metrics = trading_bot.strategy.get_performance_metrics()
+                    total_profit = perf_metrics.get('total_profit', 0.0)
+                    trades_executed = perf_metrics.get('trades_executed', 0)
+                    successful_trades = perf_metrics.get('successful_trades', 0)
+                    logger.info(f"🔔 Performance metrics: profit=${total_profit:.4f}, executed={trades_executed}, successful={successful_trades}")
+                else:
+                    # Fallback to direct attributes
+                    total_profit = getattr(trading_bot.strategy, 'total_profit', 0.0)
+                    trades_executed = len(trades) if trades else 0
+                    successful_trades = sum(1 for t in trades if t.get('success', False)) if trades else 0
+                    logger.info(f"🔔 Fallback metrics: profit=${total_profit:.4f}, executed={trades_executed}, successful={successful_trades}")
+                
+                # Create comprehensive arbitrage update
+                arbitrage_data = {
+                    'trades': trades,
+                    'total_profit': total_profit,
+                    'trades_executed': trades_executed,
+                    'successful_trades': successful_trades
+                }
+                
+                logger.info(f"🔔 Emitting arbitrage_update with {len(trades)} trades, profit: ${total_profit:.4f}")
+                socketio.emit('arbitrage_update', arbitrage_data)
+                logger.info(f"🔔 arbitrage_update event emitted successfully")
+                
+            else:
+                logger.warning("❌ Cannot get trade history from strategy for arbitrage update")
+                
+        except Exception as e:
+            logger.error(f"❌ Error in trade_executed callback: {e}", exc_info=True)
     
     def on_status_change(status_data):
         """Callback for status changes from the bot."""
@@ -296,6 +328,8 @@ def setup_socketio_events(socketio, trading_bot):
             'trade_executed': on_trade_executed,
             'status_change': on_status_change
         })
+        logger.info("✅ Registered real-time update callbacks with TradingBot")
+        logger.info(f"🔔 Registered callbacks: price_update, trade_executed, status_change")
     else:
         logger.warning("TradingBot does not have set_callbacks method.")
     
