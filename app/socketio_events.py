@@ -33,7 +33,17 @@ def setup_socketio_events(socketio, trading_bot):
         # Add this client to our set
         connected_clients.add(client_sid)
         logger.info(f"Client connected (SID: {client_sid}) - Total clients: {len(connected_clients)}")
-        # Frontend will call request_update immediately after connection
+        
+        # Send immediate status update to newly connected client
+        try:
+            if hasattr(trading_bot, 'get_status'):
+                current_status = trading_bot.get_status()
+                socketio.emit('status_update', current_status, room=client_sid)
+                logger.info(f"Sent immediate status update to new client: {current_status.get('status', 'Unknown')}")
+        except Exception as e:
+            logger.error(f"Error sending immediate status to new client: {e}")
+        
+        # Frontend will also call request_update for full data refresh
     
     @socketio.on('disconnect')
     def handle_disconnect():

@@ -480,9 +480,17 @@
         <!-- Price Chart -->
         <div class="card">
             <div class="card-header">
-                <h2 class="card-title" id="chart-title-text">SOL Price Chart (1 Hour)</h2>
-                 <div style="display: flex; align-items: center;">
-                    <span style="color: #ef4444; margin-right: 5px; font-size: 1.5em;">●</span> Live
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <h2 class="card-title" id="chart-title-text">SOL Price Chart (1 Hour)</h2>
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <div class="timeframe-controls" style="display: flex; gap: 5px;">
+                            <button id="chart-1h" class="timeframe-btn active" onclick="switchTimeframe('1h')" style="padding: 5px 12px; background-color: var(--primary); color: var(--background); border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em;">1H</button>
+                            <button id="chart-12h" class="timeframe-btn" onclick="switchTimeframe('12h')" style="padding: 5px 12px; background-color: transparent; color: var(--text-muted); border: 1px solid var(--text-muted); border-radius: 4px; cursor: pointer; font-size: 0.85em;">12H</button>
+                        </div>
+                        <div style="display: flex; align-items: center;">
+                            <span style="color: #ef4444; margin-right: 5px; font-size: 1.5em;">●</span> Live
+                        </div>
+                    </div>
                 </div>
             </div>
             <div style="height: 300px; padding: 1rem; position: relative;" class="chart-container">
@@ -729,12 +737,12 @@
                 
                 const currentTime = new Date();
                 const timeSlots = [];
-                // Generate 13 time slots for the last hour (12 intervals) + current time
-                for (let i = 12; i >= 0; i--) { // 12 past 5-min intervals, 1 current
-                    const slotTime = new Date(currentTime.getTime() - (i * 5 * 60 * 1000));
+                // Generate 25 time slots for the last 12 hours (24 intervals) + current time
+                for (let i = 24; i >= 0; i--) { // 24 past 30-min intervals, 1 current
+                    const slotTime = new Date(currentTime.getTime() - (i * 30 * 60 * 1000));
                     timeSlots.push(slotTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}));
                 }
-                console.log('⏰ Initial time slots (1 hour ending now):', timeSlots);
+                console.log('⏰ Initial time slots (12 hours ending now):', timeSlots);
                 
                 priceChart = new Chart(ctx.getContext('2d'), {
                     type: 'line',
@@ -742,7 +750,7 @@
                         labels: timeSlots,
                         datasets: [{
                             label: 'SOL Price (USD)',
-                            data: Array(13).fill(null), // 13 null values for 13 time slots
+                            data: Array(25).fill(null), // 25 null values for 25 time slots
                             borderColor: '#14f195',
                             backgroundColor: 'rgba(20, 241, 149, 0.1)',
                             borderWidth: 2,
@@ -753,13 +761,13 @@
                             spanGaps: true
                         }, {
                             label: 'Current Price Point', // Will be hidden from legend
-                            data: Array(13).fill(null),
+                            data: Array(25).fill(null),
                             borderColor: '#ef4444',
                             backgroundColor: '#ef4444',
                             borderWidth: 0,
-                            pointRadius: Array(13).fill(0),
-                            pointHoverRadius: Array(13).fill(0),
-                            pointBorderWidth: Array(13).fill(0),
+                            pointRadius: Array(25).fill(0),
+                            pointHoverRadius: Array(25).fill(0),
+                            pointBorderWidth: Array(25).fill(0),
                             pointBorderColor: '#ffffff',
                             showLine: false,
                             pointStyle: 'circle'
@@ -811,7 +819,7 @@
             // setTimeout(async function() { ... }); 
             
             // Start the blinking animation for the current time dot (now the last dot)
-            startBlinkingDot(); // Will activate once data[12] is set by updateChart
+            startBlinkingDot(); // Will activate once data[24] is set by updateChart
             console.log('💫 Blinking dot mechanism started');
             } catch (error) {
                 console.error('❌ Error initializing chart:', error);
@@ -822,7 +830,7 @@
 
         async function updateChart() {
             try {
-                console.log('📈 Updating chart (1-hour view ending now)...');
+                console.log('📈 Updating chart (12-hour view ending now)...');
                 if (!priceChart) {
                     console.log('❌ Chart not initialized yet');
                     return;
@@ -835,79 +843,79 @@
                 }
                 
                 if (chartTitleElement) {
-                    chartTitleElement.textContent = 'SOL Price Chart (1 Hour - Loading...)';
+                    chartTitleElement.textContent = 'SOL Price Chart (12 Hours - Loading...)';
                 }
                 
-                const response = await fetch('/api/price-history?hours=1.5'); // Fetch 1.5 hours to be safe with relative URL
+                const response = await fetch('/api/price-history?hours=12.5'); // Fetch 12.5 hours to be safe with relative URL
                 const rawData = await response.json();
-                console.log('Raw price history data (for 1hr chart):', rawData);
+                console.log('Raw price history data (for 12hr chart):', rawData);
                 
                 const currentTime = new Date();
                 const newTimeSlots = [];
-                const prices = Array(13).fill(null);
+                const prices = Array(25).fill(null);
 
-                // Generate 13 time slots for the last hour (12 intervals) + current time interval
-                for (let i = 12; i >= 0; i--) { 
-                    const slotTime = new Date(currentTime.getTime() - (i * 5 * 60 * 1000));
+                // Generate 25 time slots for the last 12 hours (24 intervals of 30min) + current time interval
+                for (let i = 24; i >= 0; i--) { 
+                    const slotTime = new Date(currentTime.getTime() - (i * 30 * 60 * 1000));
                     newTimeSlots.push(slotTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}));
                 }
-                console.log('New time slots for chart (1hr ending now):', newTimeSlots);
+                console.log('New time slots for chart (12hr ending now):', newTimeSlots);
 
                 if (rawData && rawData.length > 0) {
-                    const fiveMinData = aggregateToFiveMinutes(rawData);
-                    console.log('Aggregated 5-minute data (for 1hr chart):', fiveMinData);
+                    const thirtyMinData = aggregateToThirtyMinutes(rawData);
+                    console.log('Aggregated 30-minute data (for 12hr chart):', thirtyMinData);
 
-                    // Map aggregated data to the 13 time slots
-                    // The slots are [T-60, T-55, ..., T-5, T]
-                    for (let i = 0; i < 13; i++) {
-                        const targetSlotTime = new Date(currentTime.getTime() - ((12 - i) * 5 * 60 * 1000));
+                    // Map aggregated data to the 25 time slots
+                    // The slots are [T-720min, T-690min, ..., T-30min, T]
+                    for (let i = 0; i < 25; i++) {
+                        const targetSlotTime = new Date(currentTime.getTime() - ((24 - i) * 30 * 60 * 1000));
                         
-                        const matchingData = fiveMinData.find(d => {
+                        const matchingData = thirtyMinData.find(d => {
                             const dataTime = new Date(d.timestamp);
-                            // Check if dataTime falls into the 5-minute interval ending at targetSlotTime
+                            // Check if dataTime falls into the 30-minute interval ending at targetSlotTime
                             const intervalEnd = targetSlotTime;
-                            const intervalStart = new Date(targetSlotTime.getTime() - 5 * 60 * 1000);
+                            const intervalStart = new Date(targetSlotTime.getTime() - 30 * 60 * 1000);
                             return dataTime >= intervalStart && dataTime < intervalEnd;
                         });
                         
                         if (matchingData) {
                             prices[i] = matchingData.price;
-                        } else if (i === 12) { // For the very last slot (current time)
-                             // Try to get the most recent point if no exact match for the last 5min slot
-                            const latestPoint = fiveMinData.length > 0 ? fiveMinData[fiveMinData.length - 1] : null;
+                        } else if (i === 24) { // For the very last slot (current time)
+                             // Try to get the most recent point if no exact match for the last 30min slot
+                            const latestPoint = thirtyMinData.length > 0 ? thirtyMinData[thirtyMinData.length - 1] : null;
                             if (latestPoint) {
                                 const latestTime = new Date(latestPoint.timestamp);
-                                // Check if latest point is within the last 5-10 minutes
-                                if (currentTime.getTime() - latestTime.getTime() < 10 * 60 * 1000) {
+                                // Check if latest point is within the last 30-60 minutes
+                                if (currentTime.getTime() - latestTime.getTime() < 60 * 60 * 1000) {
                                     prices[i] = latestPoint.price;
                                 }
                             }
                         }
                     }
-                    console.log('Prices for 1hr chart:', prices);
+                    console.log('Prices for 12hr chart:', prices);
                     
                     priceChart.data.labels = newTimeSlots;
                     priceChart.data.datasets[0].data = prices;
                     
-                    // Update current time dot (last position is index 12)
-                    const currentPriceForDot = prices[12]; 
-                    priceChart.data.datasets[1].data = Array(13).fill(null);
+                    // Update current time dot (last position is index 24)
+                    const currentPriceForDot = prices[24]; 
+                    priceChart.data.datasets[1].data = Array(25).fill(null);
                     if (currentPriceForDot !== null) {
-                        priceChart.data.datasets[1].data[12] = currentPriceForDot;
+                        priceChart.data.datasets[1].data[24] = currentPriceForDot;
                     }
                     
                     priceChart.update('none');
                     if (chartTitleElement) {
-                        chartTitleElement.textContent = 'SOL Price Chart (1 Hour)';
+                        chartTitleElement.textContent = 'SOL Price Chart (12 Hours)';
                     }
-                    console.log(`Chart updated with 1-hour data ending now.`);
+                    console.log(`Chart updated with 12-hour data ending now.`);
 
                 } else {
                     console.warn('No price history data available for chart');
                     // Don't show any data, just indicate there's no data
                     priceChart.data.labels = newTimeSlots;
-                    priceChart.data.datasets[0].data = Array(13).fill(null); // Empty data
-                    priceChart.data.datasets[1].data = Array(13).fill(null); // Empty dot
+                    priceChart.data.datasets[0].data = Array(25).fill(null); // Empty data
+                    priceChart.data.datasets[1].data = Array(25).fill(null); // Empty dot
                     priceChart.update('none');
 
                     if (chartTitleElement) {
@@ -920,7 +928,7 @@
                     if (loadingElement) loadingElement.style.display = 'none';
                 }
             } catch (error) {
-                console.error('Error updating 1hr chart:', error);
+                console.error('Error updating 12hr chart:', error);
                 if (chartTitleElement) {
                     chartTitleElement.textContent = 'SOL Price Chart (Error)';
                 }
@@ -928,62 +936,62 @@
         }
 
         
-        // Aggregates raw price data into 5-minute intervals
-        function aggregateToFiveMinutes(rawData) {
+        // Aggregates raw price data into 30-minute intervals (optimized for Pi)
+        function aggregateToThirtyMinutes(rawData) {
             const intervals = {};
             
-            // Group data by 5-minute intervals
+            // Group data by 30-minute intervals
             for (const point of rawData) {
                 if (!point.timestamp || typeof point.price !== 'number') continue;
                 
                 const timestamp = new Date(point.timestamp);
-                // Create a key based on 5-minute intervals
+                // Create a key based on 30-minute intervals
                 const intervalKey = new Date(
                     timestamp.getFullYear(),
                     timestamp.getMonth(),
                     timestamp.getDate(),
                     timestamp.getHours(),
-                    Math.floor(timestamp.getMinutes() / 5) * 5,
+                    Math.floor(timestamp.getMinutes() / 30) * 30, // Round down to nearest 30 minutes
+                    0,
                     0
                 ).toISOString();
                 
                 if (!intervals[intervalKey]) {
                     intervals[intervalKey] = {
+                        timestamp: intervalKey,
                         prices: [],
-                        timestamp: timestamp
+                        high: point.price,
+                        low: point.price,
+                        open: point.price,
+                        close: point.price
                     };
                 }
                 
-                intervals[intervalKey].prices.push(point.price);
+                const interval = intervals[intervalKey];
+                interval.prices.push(point.price);
+                interval.high = Math.max(interval.high, point.price);
+                interval.low = Math.min(interval.low, point.price);
+                interval.close = point.price; // Last price becomes close
             }
             
-            // Convert groups to aggregated data points
-            const result = [];
-            for (const key of Object.keys(intervals).sort()) {
-                const interval = intervals[key];
-                if (interval.prices.length > 0) {
-                    // Calculate average price for this interval
-                    const sum = interval.prices.reduce((total, price) => total + price, 0);
-                    const avgPrice = sum / interval.prices.length;
-                    
-                    result.push({
-                        timestamp: interval.timestamp,
-                        price: avgPrice,
-                        count: interval.prices.length
-                    });
-                }
-            }
-            
-            return result;
+            // Convert to array and calculate average prices
+            return Object.values(intervals).map(interval => ({
+                timestamp: interval.timestamp,
+                price: interval.prices.reduce((sum, p) => sum + p, 0) / interval.prices.length,
+                high: interval.high,
+                low: interval.low,
+                open: interval.open,
+                close: interval.close
+            })).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         }
         
         // Helper function to get current price from aggregated data
-        function getCurrentPrice(fiveMinData) {
-            if (!fiveMinData.length) return null;
+        function getCurrentPrice(thirtyMinData) {
+            if (!thirtyMinData.length) return null;
             
             const now = new Date();
             // Find the most recent data point
-            const sorted = fiveMinData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            const sorted = thirtyMinData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             return sorted[0].price;
         }
         
@@ -998,38 +1006,38 @@
             }
             
             blinkingInterval = setInterval(function() {
-                if (!priceChart || !priceChart.data.datasets[1] || priceChart.data.datasets[1].data[12] === null) return;
+                if (!priceChart || !priceChart.data.datasets[1] || priceChart.data.datasets[1].data[24] === null) return;
                 
                 blinkingDotVisible = !blinkingDotVisible;
                 const currentTimeDataset = priceChart.data.datasets[1];
                 
                 // Initialize pointRadius/HoverRadius/BorderWidth if not already arrays of correct length
-                // This ensures we don't error if they were somehow not initialized as arrays of 13 items
-                if (!Array.isArray(currentTimeDataset.pointRadius) || currentTimeDataset.pointRadius.length !== 13) {
-                    currentTimeDataset.pointRadius = Array(13).fill(0);
+                // This ensures we don't error if they were somehow not initialized as arrays of 25 items
+                if (!Array.isArray(currentTimeDataset.pointRadius) || currentTimeDataset.pointRadius.length !== 25) {
+                    currentTimeDataset.pointRadius = Array(25).fill(0);
                 }
-                if (!Array.isArray(currentTimeDataset.pointHoverRadius) || currentTimeDataset.pointHoverRadius.length !== 13) {
-                    currentTimeDataset.pointHoverRadius = Array(13).fill(0);
+                if (!Array.isArray(currentTimeDataset.pointHoverRadius) || currentTimeDataset.pointHoverRadius.length !== 25) {
+                    currentTimeDataset.pointHoverRadius = Array(25).fill(0);
                 }
-                if (!Array.isArray(currentTimeDataset.pointBorderWidth) || currentTimeDataset.pointBorderWidth.length !== 13) {
-                    currentTimeDataset.pointBorderWidth = Array(13).fill(0);
+                if (!Array.isArray(currentTimeDataset.pointBorderWidth) || currentTimeDataset.pointBorderWidth.length !== 25) {
+                    currentTimeDataset.pointBorderWidth = Array(25).fill(0);
                 }
 
                 // Reset all points except the last one
-                for (let i = 0; i < 12; i++) {
+                for (let i = 0; i < 24; i++) {
                     currentTimeDataset.pointRadius[i] = 0;
                     currentTimeDataset.pointHoverRadius[i] = 0;
                     currentTimeDataset.pointBorderWidth[i] = 0;
                 }
                 
                 if (blinkingDotVisible) {
-                    currentTimeDataset.pointRadius[12] = 12; // Last point prominent
-                    currentTimeDataset.pointHoverRadius[12] = 15;
-                    currentTimeDataset.pointBorderWidth[12] = 3;
+                    currentTimeDataset.pointRadius[24] = 12; // Last point prominent
+                    currentTimeDataset.pointHoverRadius[24] = 15;
+                    currentTimeDataset.pointBorderWidth[24] = 3;
                 } else {
-                    currentTimeDataset.pointRadius[12] = 8;  // Last point smaller/dimmer
-                    currentTimeDataset.pointHoverRadius[12] = 10;
-                    currentTimeDataset.pointBorderWidth[12] = 1;
+                    currentTimeDataset.pointRadius[24] = 8;  // Last point smaller/dimmer
+                    currentTimeDataset.pointHoverRadius[24] = 10;
+                    currentTimeDataset.pointBorderWidth[24] = 1;
                 }
                 
                 priceChart.update('none');
@@ -1044,14 +1052,14 @@
             const currentPriceDataset = priceChart.data.datasets[0];
             const blinkingDotDataset = priceChart.data.datasets[1];
 
-            if (currentPriceDataset.data.length === 13 && blinkingDotDataset.data.length === 13) {
-                const lastPrice = currentPriceDataset.data[12];
+            if (currentPriceDataset.data.length === 25 && blinkingDotDataset.data.length === 25) {
+                const lastPrice = currentPriceDataset.data[24];
                 if (lastPrice !== null) {
-                    blinkingDotDataset.data[12] = lastPrice;
+                    blinkingDotDataset.data[24] = lastPrice;
                 } else {
                     // If last price is null, keep dot null or try to find previous non-null
                     // For simplicity, if main line has no data at last point, dot also has no data.
-                    blinkingDotDataset.data[12] = null;
+                    blinkingDotDataset.data[24] = null;
                 }
             }
             // priceChart.update('none'); // Potentially redundant if updateChart already called it
@@ -1196,7 +1204,7 @@
                     priceChart.data.datasets[0].data = prices;
 
                     // Also update the blinking dot's Y value
-                    priceChart.data.datasets[1].data[12] = parseFloat(data.price);
+                    priceChart.data.datasets[1].data[24] = parseFloat(data.price);
                     
                     // Shift data if needed or just update last point and labels
                     // For simplicity, we'll rely on the periodic updateChart for full history refresh
