@@ -1,0 +1,124 @@
+# Production Configuration Template
+# Copy this to config.yaml when ready to go live
+
+# Workhorse Configuration
+
+# Solana Configuration
+solana:
+  # Jito's MEV-protected RPC endpoint (recommended for production)
+  rpc_endpoint: "https://mainnet.block-engine.jito.wtf"
+  commitment: "confirmed"
+  
+  # MEV Protection Settings
+  mev_protection: true    # Enable priority fees for MEV protection
+  priority_fee: 5000      # Micro-lamports per compute unit
+
+# Wallet Configuration
+wallet_path: "./kp.json"
+wallet:
+  # Your Solana wallet private key (base58 encoded)
+  # KEEP THIS SECURE - Never commit to git!
+  private_key: ""
+  # Wallet address for reference
+  public_key: "CKu6VmahxjZAmWdEDWTvprckax3cJJQ4qwHpuuELkxgm"
+
+# Trading Configuration - PRODUCTION SETTINGS
+trading:
+  # Trading mode: "live" for production
+  mode: "live"  # ⚠️ CHANGED FROM PAPER TO LIVE
+  # Starting balance for paper trading (USDC)
+  paper_balance: 1000.0
+  
+  # Token to trade
+  token_symbol: "SOL"
+  base_currency: "USDT"
+  
+  # Trading parameters - CONSERVATIVE SETTINGS FOR MAINNET
+  trade_amount: 5.0   # ⚠️ REDUCED TO $5 FOR SAFETY - start small!
+  max_trades_per_hour: 30  # ⚠️ REDUCED frequency for safety
+  min_trade_interval_minutes: 5  # ⚠️ INCREASED interval for safety
+  min_price_change: 0.01  # ⚠️ INCREASED to 1% for less sensitive trading
+
+# Price Feed Configuration
+price_feeds:
+  sources:
+    - "coinbase"  # Most reliable
+    - "binance"   # Good fallback
+  update_interval: 15  # Slower to reduce API errors
+  websocket_timeout: 30
+  max_retries: 3
+
+# Risk Management - CONSERVATIVE SETTINGS
+risk:
+  stop_loss: 0.08      # ⚠️ INCREASED to 8% for safety
+  take_profit: 0.05    # ⚠️ INCREASED to 5% for better profits
+  max_position_size: 0.05  # ⚠️ REDUCED to 5% for safety
+
+# Performance Settings (Raspberry Pi optimized)
+performance:
+  max_price_history: 1000
+  max_trade_history: 100
+  cache_duration: 300
+  max_workers: 2
+  websocket_buffer_size: 1024
+
+# Raspberry Pi Optimization Settings
+raspberry_pi:
+  enabled: true
+  max_table_rows: 50
+  update_throttle_ms: 1000
+  status_update_interval: 120
+  uptime_update_interval: 120
+  socket_io:
+    reconnection_attempts: 3
+    reconnection_delay: 2000
+    timeout: 30000
+  page_visibility_optimization: true
+  reduce_dom_updates: true
+
+# UI Theme Configuration
+ui_theme:
+  colors:
+    primary: "#00f5b4"
+    primary_dark: "#00d4aa"
+    secondary: "#7c3aed"
+    background: "#0d1117"
+    surface: "#21262d"
+    surface_light: "#30363d"
+    text: "#f0f6fc"
+    text_muted: "#8b949e"
+    success: "#3fb950"
+    warning: "#d29922"
+    error: "#f85149"
+    info: "#58a6ff"
+    border: "#30363d"
+    accent_1: "#ff7b72"
+    accent_2: "#a5a5a5"
+    accent_3: "#79c0ff"
+  font_family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif"
+  card_radius: "0.75rem"
+  button_radius: "0.5rem"
+  shadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)"
+
+# Web UI Configuration - PRODUCTION SETTINGS
+web:
+  host: "0.0.0.0"
+  port: 5000
+  debug: false        # ⚠️ DISABLED for production
+  
+  # HTTPS Configuration - ENABLE FOR PRODUCTION
+  use_https: true     # ⚠️ ENABLED for production security
+  cert_path: "ssl/cert.pem"
+  key_path: "ssl/key.pem"
+  
+  price_update_interval: 2
+  portfolio_update_interval: 5
+
+# Logging Configuration - ENHANCED FOR PRODUCTION
+logging:
+  level: "INFO"
+  file: "workhorse.log"
+  max_file_size: "10MB"
+  backup_count: 5     # ⚠️ INCREASED backup count
+  log_trades: true
+  trade_log_file: "trades.log"

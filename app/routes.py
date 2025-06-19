@@ -28,8 +28,10 @@ def api_status():
     config = current_app.config['CONFIG']
     
     try:
+        is_running = bot.is_running()
         status = {
-            'running': bot.is_running(),
+            'running': is_running,
+            'status': 'Running' if is_running else 'Stopped',
             'mode': config['trading']['mode'],
             'token': config['trading']['token_symbol'],
             'last_update': bot.get_last_update(),
@@ -83,45 +85,10 @@ def api_trades():
 
 @main_bp.route('/api/price-history')
 def api_price_history():
-    """Get price history for charts."""
-    bot = current_app.config['TRADING_BOT']
-    hours = request.args.get('hours', 24, type=float)  # Allow decimal hours (e.g., 1.5)
-    
-    try:
-        logger.info(f"Fetching price history for {hours} hours")
-        history = bot.get_price_history(hours)
-        
-        if not history:
-            logger.warning(f"No price history found for the last {hours} hours")
-            # Return empty array instead of synthetic data
-            return jsonify([])
-            
-        # Validate each point in the history
-        valid_history = []
-        for point in history:
-            if not isinstance(point, dict):
-                logger.warning(f"Skipping non-dict point: {point}")
-                continue
-                
-            if 'price' not in point or 'timestamp' not in point:
-                logger.warning(f"Skipping point missing price or timestamp: {point}")
-                continue
-                
-            # Ensure price is a number
-            try:
-                point['price'] = float(point['price'])
-            except (ValueError, TypeError):
-                logger.warning(f"Skipping point with invalid price: {point}")
-                continue
-                
-            valid_history.append(point)
-                
-        logger.info(f"Returning {len(valid_history)} valid price history points")
-        return jsonify(valid_history)
-    except Exception as e:
-        logger.error(f"Error getting price history: {e}", exc_info=True)
-        # Return error instead of synthetic data
-        return jsonify({'error': str(e)}), 500
+    """Price history endpoint (disabled)."""
+    logger.info("Price history endpoint accessed (chart disabled)")
+    # Return empty array since chart functionality is disabled
+    return jsonify([{"message": "Chart functionality has been disabled"}])
 
 
 @main_bp.route('/api/trading/start', methods=['POST'])
@@ -174,34 +141,15 @@ def api_config():
 
 @main_bp.route('/api/price-history-debug')
 def api_price_history_debug():
-    """Debug endpoint for price history."""
-    bot = current_app.config['TRADING_BOT']
-    hours = request.args.get('hours', 1.5, type=float)
+    """Debug endpoint for price history (disabled)."""
+    logger.info("Price history debug endpoint accessed (chart disabled)")
     
-    try:
-        history = bot.get_price_history(int(hours))
-        
-        # Add debugging info
-        debug_info = {
-            'requested_hours': hours,
-            'history_points': len(history) if history else 0,
-            'has_price_data': any(point.get('price') is not None for point in history) if history else False,
-            'timestamp_format': history[0].get('timestamp') if history and len(history) > 0 else None,
-            'price_sample': history[0].get('price') if history and len(history) > 0 else None,
-            'raw_history': history[:5]  # First 5 points for inspection
-        }
-        
-        return jsonify({
-            'debug_info': debug_info,
-            'history': history
-        })
-    except Exception as e:
-        logger.error(f"Error in price history debug endpoint: {e}")
-        import traceback
-        return jsonify({
-            'error': str(e),
-            'traceback': traceback.format_exc()
-        }), 500
+    return jsonify({
+        'debug_info': {
+            'message': 'Chart functionality has been disabled'
+        },
+        'history': []
+    })
 
 
 @main_bp.route('/api/test-trades', methods=['POST'])
@@ -227,6 +175,173 @@ def inject_test_trades():
     except Exception as e:
         logger.error(f"Error injecting test trades: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+@main_bp.route('/api/validate-funds')
+def api_validate_funds():
+    """Validate wallet funds for live trading."""
+    bot = current_app.config['TRADING_BOT']
+    
+    try:
+        # Run the async validation function
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            validation_result = loop.run_until_complete(bot.validate_trading_funds())
+        finally:
+            loop.close()
+        
+        return jsonify(validation_result)
+    except Exception as e:
+        logger.error(f"Error validating funds: {e}")
+        return jsonify({
+            'sufficient': False,
+            'error': str(e),
+            'mode': bot.config.get('trading', {}).get('mode', 'unknown')
+        }), 500
+
+
+@main_bp.route('/api/bot/start', methods=['POST'])
+def api_bot_start():
+    """Start the arbitrage bot."""
+    bot = current_app.config['TRADING_BOT']
+    
+    try:
+        logger.info(f"Bot start requested. Current status: {bot.is_running()}")
+        
+        if bot.is_running():
+            logger.info("Bot is already running, returning error")
+            return jsonify({
+                'success': False,
+                'error': 'Bot is already running',
+                'status': 'running'
+            })
+        
+        # Request bot to start
+        success = bot.request_start()
+        
+        if success:
+            logger.info("Bot start requested successfully")
+            # Give it a moment to start
+            import time
+            time.sleep(0.5)
+            
+            # Trigger status change callback
+            if hasattr(bot, '_emit_status_change'):
+                logger.info("Emitting status change")
+                bot._emit_status_change()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Bot start requested successfully',
+                'status': 'Starting'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to request bot start',
+                'status': 'error'
+            })
+            
+    except Exception as e:
+        logger.error(f"Error requesting bot start: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'status': 'error'
+        }), 500
+
+
+@main_bp.route('/api/bot/stop', methods=['POST'])
+def api_bot_stop():
+    """Stop the arbitrage bot."""
+    bot = current_app.config['TRADING_BOT']
+    
+    try:
+        logger.info(f"Bot stop requested. Current status: {bot.is_running()}")
+        
+        if not bot.is_running():
+            logger.info("Bot is not running, returning error")
+            return jsonify({
+                'success': False,
+                'error': 'Bot is not running',
+                'status': 'stopped'
+            })
+        
+        # Request bot to stop
+        success = bot.request_stop()
+        
+        if success:
+            logger.info("Bot stop requested successfully")
+            # Give it a moment to stop
+            import time
+            time.sleep(0.5)
+            
+            # Trigger status change callback
+            if hasattr(bot, '_emit_status_change'):
+                logger.info("Emitting status change")
+                bot._emit_status_change()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Bot stop requested successfully',
+                'status': 'Stopping'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to request bot stop',
+                'status': 'error'
+            })
+            
+    except Exception as e:
+        logger.error(f"Error stopping bot: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'status': 'error'
+        }), 500
+
+
+@main_bp.route('/api/wallet-address')
+def api_wallet_address():
+    """Get the wallet address for funding."""
+    bot = current_app.config['TRADING_BOT']
+    
+    try:
+        # Get wallet info from the bot
+        wallet_info = bot.get_wallet_info()
+        
+        if wallet_info and wallet_info.get('address'):
+            return jsonify({
+                'address': wallet_info['address'],
+                'success': True
+            })
+        else:
+            # Try to get address from solana client directly
+            if hasattr(bot, 'solana_client') and hasattr(bot.solana_client, 'get_wallet_address'):
+                try:
+                    address = bot.solana_client.get_wallet_address()
+                    if address:
+                        return jsonify({
+                            'address': address,
+                            'success': True
+                        })
+                except Exception as e:
+                    logger.error(f"Error getting address from solana client: {e}")
+            
+            return jsonify({
+                'error': 'Wallet address not available',
+                'success': False
+            }), 404
+            
+    except Exception as e:
+        logger.error(f"Error getting wallet address: {e}")
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 500
 
 
 @main_bp.errorhandler(404)

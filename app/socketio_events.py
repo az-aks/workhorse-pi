@@ -24,11 +24,19 @@ def setup_socketio_events(socketio, trading_bot):
         global connected_clients
         client_sid = request.sid
         
+        # Clean up stale connections first
+        connected_clients = {sid for sid in connected_clients if socketio.server.manager.get_sid(sid)}
+        
         # Check if we already have the maximum number of clients
         if len(connected_clients) >= MAX_CLIENTS and client_sid not in connected_clients:
             logger.warning(f"Connection rejected - maximum of {MAX_CLIENTS} client allowed (single instance control)")
-            # Disconnect this client
-            return False
+            logger.info(f"Current connected clients: {connected_clients}")
+            # Allow the connection but disconnect the oldest one
+            if connected_clients:
+                oldest_client = next(iter(connected_clients))
+                logger.info(f"Disconnecting oldest client: {oldest_client}")
+                socketio.disconnect(oldest_client)
+                connected_clients.discard(oldest_client)
         
         # Add this client to our set
         connected_clients.add(client_sid)
@@ -46,13 +54,13 @@ def setup_socketio_events(socketio, trading_bot):
         # Frontend will also call request_update for full data refresh
     
     @socketio.on('disconnect')
-    def handle_disconnect():
+    def handle_disconnect(sid=None):
         """Handle client disconnection."""
         global connected_clients
-        client_sid = request.sid
+        client_sid = request.sid if hasattr(request, 'sid') else sid
         
         # Remove this client from our set
-        if client_sid in connected_clients:
+        if client_sid and client_sid in connected_clients:
             connected_clients.remove(client_sid)
             
         logger.info(f"Client disconnected (SID: {client_sid}) - Total clients: {len(connected_clients)}")
@@ -321,15 +329,35 @@ def setup_socketio_events(socketio, trading_bot):
             # Fall back to original approach if get_status doesn't exist
             socketio.emit('status_update', status_data)
     
+    def on_funds_alert(alert_data):
+        """Callback for funds alerts from the bot."""
+        logger.critical(f"🚨 FUNDS ALERT received from bot: {alert_data}")
+        
+        # Emit to all connected clients
+        socketio.emit('funds_alert', alert_data)
+        logger.info(f"Funds alert emitted to clients: {alert_data.get('message', 'Unknown alert')}")
+        
+        # Also emit as a general notification for UI display
+        notification = {
+            'type': 'error' if alert_data.get('severity') == 'critical' else 'warning',
+            'title': 'Insufficient Funds' if alert_data.get('type') == 'insufficient_funds' else 'Funds Alert',
+            'message': alert_data.get('message', 'Wallet funding issue detected'),
+            'details': alert_data.get('details', {}),
+            'timestamp': alert_data.get('timestamp'),
+            'persistent': True  # Don't auto-dismiss this notification
+        }
+        socketio.emit('notification', notification)
+
     # Register callbacks with trading bot
     if hasattr(trading_bot, 'set_callbacks'):
         trading_bot.set_callbacks({
             'price_update': on_price_update,
             'trade_executed': on_trade_executed,
-            'status_change': on_status_change
+            'status_change': on_status_change,
+            'funds_alert': on_funds_alert
         })
         logger.info("✅ Registered real-time update callbacks with TradingBot")
-        logger.info(f"🔔 Registered callbacks: price_update, trade_executed, status_change")
+        logger.info(f"🔔 Registered callbacks: price_update, trade_executed, status_change, funds_alert")
     else:
         logger.warning("TradingBot does not have set_callbacks method.")
     

@@ -5,9 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Workhorse - Solana Trading Bot</title>
     
-    <!-- Chart.js Library -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
-    
     <!-- CSS -->
     <style>
         :root {
@@ -136,6 +133,7 @@
             color: var(--error);
         }
         
+        /* Grid System */
         .grid {
             display: grid;
             gap: 1.5rem;
@@ -147,23 +145,179 @@
         .grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
         .grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
         
+        /* Portfolio & Trades Grid Layout */
+        .portfolio-trades-grid {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        /* Arbitrage Trades Full Width */
+        .arbitrage-trades-section {
+            margin-bottom: 2rem;
+        }
+        
+        /* Table Container Improvements */
+        .table-container {
+            border-radius: 0.5rem;
+            border: 1px solid var(--border);
+            background: var(--background);
+            overflow: hidden;
+        }
+        
+        .table-container.recent-trades {
+            max-height: 250px;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        
+        .table-container.arbitrage-trades {
+            max-height: 400px;
+            overflow-y: auto;
+            overflow-x: auto;
+        }
+        
+        /* Enhanced Table Styles */
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0;
+            background: var(--background);
+            font-size: 0.875rem;
+        }
+        
+        .table th {
+            background: var(--surface);
+            color: var(--text);
+            font-weight: 600;
+            text-align: left;
+            padding: 0.75rem 1rem;
+            border-bottom: 2px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        .table td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+        }
+        
+        .table tbody tr:hover {
+            background: var(--surface);
+        }
+        
+        .table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        /* Table responsive adjustments */
+        .table th:first-child,
+        .table td:first-child {
+            padding-left: 1.25rem;
+        }
+        
+        .table th:last-child,
+        .table td:last-child {
+            padding-right: 1.25rem;
+        }
+        
+        /* Status indicators in tables */
+        .table .status-success {
+            color: var(--success);
+            font-weight: 600;
+        }
+        
+        .table .status-error {
+            color: var(--error);
+            font-weight: 600;
+        }
+        
+        .table .text-muted {
+            color: var(--text-muted);
+        }
+        
+        .table .text-center {
+            text-align: center;
+        }
+        
+        /* Responsive Tables */
+        @media (max-width: 1200px) {
+            .portfolio-trades-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .table-container.arbitrage-trades {
+                overflow-x: auto;
+            }
+            
+            .grid-cols-3 {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .table-container.recent-trades,
+            .table-container.arbitrage-trades {
+                max-height: 300px;
+            }
+            
+            .grid-cols-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+        
         .card {
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: 0.5rem;
-            padding: 1.5rem;
+            overflow: hidden;
         }
         
         .card-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--background);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 1rem;
+        }
+        
+        .card-header h2 {
+            margin: 0;
         }
         
         .card-title {
             font-size: 1.125rem;
             font-weight: 600;
+            margin: 0;
+        }
+        
+        /* For metric cards and cards without tables */
+        .card.metric {
+            padding: 1.5rem;
+            text-align: center;
+        }
+        
+        .card.metric .card-header {
+            padding: 0;
+            border-bottom: none;
+            background: transparent;
+            margin-bottom: 1rem;
+        }
+        
+        /* Cards with just content (no tables) */
+        .card.content-only {
+            padding: 1.5rem;
+        }
+        
+        .card.content-only .card-header {
+            padding: 0;
+            border-bottom: none;
+            background: transparent;
+            margin-bottom: 1rem;
         }
         
         .metric {
@@ -205,211 +359,171 @@
             border: 1px solid var(--border);
         }
         
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #059669;
+        }
+        
         .btn-danger {
             background: var(--error);
             color: white;
         }
         
-        .table {
-            width: 100%;
-            border-collapse: collapse;
+        .btn-danger:hover {
+            background: #dc2626;
         }
         
-        .table th,
-        .table td {
-            padding: 0.75rem;
-            text-align: left;
+        .btn-disabled {
+            background: #6b7280 !important;
+            color: #9ca3af !important;
+            cursor: not-allowed !important;
+            opacity: 0.6 !important;
+        }
+        
+        .btn-disabled:hover {
+            background: #6b7280 !important;
+            color: #9ca3af !important;
+        }
+
+        /* Modal Styles */
+        .modal {
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-content {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--card-radius, 0.75rem);
+            max-width: 600px;
+            width: 90%;
+            max-height: 80%;
+            overflow-y: auto;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem;
             border-bottom: 1px solid var(--border);
         }
         
-        .table th {
-            font-weight: 600;
+        .modal-header h3 {
+            margin: 0;
+            color: var(--error);
+        }
+        
+        .close-btn {
+            font-size: 1.5rem;
+            cursor: pointer;
             color: var(--text-muted);
-            font-size: 0.875rem;
+            transition: color 0.2s;
         }
         
-        .text-success { color: var(--success); }
-        .text-error { color: var(--error); }
-        .text-warning { color: var(--warning); }
-        .text-muted { color: var(--text-muted); }
-        
-        /* Create a toast notification system for errors and alerts */
-        .toast-container {
-            position: fixed;
-            bottom: 1rem;
-            right: 1rem;
-            z-index: 1000;
-            max-width: 90%;
-            width: 350px;
-        }
-
-        .toast {
-            background: var(--surface);
-            border-left: 4px solid var(--primary);
+        .close-btn:hover {
             color: var(--text);
+        }
+        
+        .modal-body {
+            padding: 1.5rem;
+        }
+        
+        .alert-details {
+            background: var(--background);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin: 1rem 0;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        
+        .alert-actions {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+        
+        .alert-actions .btn {
+            flex: 1;
+        }
+        
+        /* Notification Styles */
+        #notification-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 999;
+            max-width: 400px;
+        }
+        
+        .notification {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
             padding: 1rem;
             margin-bottom: 0.5rem;
-            border-radius: 0.25rem;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        .notification.error {
+            border-left: 4px solid var(--error);
+        }
+        
+        .notification.warning {
+            border-left: 4px solid var(--warning);
+        }
+        
+        .notification.success {
+            border-left: 4px solid var(--success);
+        }
+        
+        .notification-header {
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
-            animation: slide-in 0.3s ease;
-            opacity: 0;
-            transform: translateY(100%);
-            transition: all 0.3s ease;
+            align-items: center;
+            margin-bottom: 0.5rem;
         }
-
-        .toast.show {
-            opacity: 1;
-            transform: translateY(0);
+        
+        .notification-title {
+            font-weight: 600;
+            font-size: 0.9rem;
         }
-
-        .toast-error {
-            border-left-color: var(--error);
-        }
-
-        .toast-warning {
-            border-left-color: var(--warning);
-        }
-
-        .toast-success {
-            border-left-color: var(--success);
-        }
-
-        .toast-content {
-            flex: 1;
-            margin-right: 0.5rem;
-        }
-
-        .toast-title {
-            font-weight: bold;
-            margin-bottom: 0.25rem;
-        }
-
-        .toast-message {
-            font-size: 0.875rem;
-            word-break: break-word;
-        }
-
-        .toast-close {
-            background: transparent;
-            border: none;
-            color: var(--text-muted);
-            font-size: 1.25rem;
+        
+        .notification-close {
             cursor: pointer;
-            padding: 0;
-            line-height: 1;
+            color: var(--text-muted);
+            font-size: 1.2rem;
         }
-
-        .toast-close:hover {
-            color: var(--text);
+        
+        .notification-message {
+            font-size: 0.85rem;
+            color: var(--text-muted);
         }
-
-        @keyframes slide-in {
+        
+        @keyframes slideIn {
             from {
-                transform: translateY(100%);
+                transform: translateX(100%);
                 opacity: 0;
             }
             to {
-                transform: translateY(0);
+                transform: translateX(0);
                 opacity: 1;
-            }
-        }
-        
-        /* Loading indicators */
-        .loading {
-            display: inline-block;
-            width: 1rem;
-            height: 1rem;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
-            border-top-color: var(--primary);
-            animation: spin 1s infinite linear;
-            margin-left: 0.5rem;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        
-        /* Improve touch targets for mobile */
-        @media (max-width: 768px) {
-            /* Existing mobile styles... */
-            
-            /* Ensure all interactive elements are large enough for touch */
-            button, .btn, a, input, select {
-                min-height: 44px;
-                min-width: 44px;
-            }
-            
-            /* Add more spacing between items in tables */
-            .table td, .table th {
-                padding: 0.75rem 0.5rem;
-            }
-        }
-        
-        @media (max-width: 480px) {
-            /* Existing very small screen styles... */
-            
-            /* Make toast notifications better on mobile */
-            .toast-container {
-                width: calc(100% - 2rem);
-                right: 1rem;
-                bottom: 1rem;
-            }
-            
-            /* Improve scrollable tables */
-            .table-container {
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
-                margin: 0 -0.75rem; /* Negative margin to allow wider scrolling area */
-                padding: 0 0.75rem;
-            }
-            
-            .table-container table {
-                min-width: 100%; /* Ensure table takes at least full width */
-            }
-            
-            /* Make scrollability obvious */
-            .table-scroll-hint {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                color: var(--text-muted);
-                font-size: 0.7rem;
-                margin-bottom: 0.5rem;
-            }
-            
-            .table-scroll-hint i {
-                font-size: 0.9rem;
-                margin-right: 0.25rem;
-            }
-        }
-        
-        @media (max-width: 375px) {
-            /* Existing ultra-small screen styles... */
-            
-            /* Further optimize for very small screens */
-            .container {
-                padding: 0.4rem;
-            }
-            
-            .card {
-                padding: 0.6rem;
-            }
-            
-            /* Make status badges and controls fit */
-            .status-controls {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 0.5rem;
-                justify-content: center;
-            }
-            
-            .badge, .status-badge {
-                font-size: 0.65rem;
-                padding: 0.2rem 0.4rem;
             }
         }
     </style>
@@ -443,11 +557,7 @@
 
     <div class="container">
         <!-- Key Metrics -->
-        <div class="grid grid-cols-4">
-            <div class="card metric">
-                <div class="metric-value" id="current-price">--</div>
-                <div class="metric-label">SOL Price</div>
-            </div>
+        <div class="grid grid-cols-3">
             <div class="card metric">
                 <div class="metric-value" id="portfolio-value">--</div>
                 <div class="metric-label">Portfolio Value</div>
@@ -463,56 +573,32 @@
         </div>
 
         <!-- Status and Refresh -->
-        <div class="card">
+        <div class="card content-only">
             <div class="card-header">
                 <h2 class="card-title">Arbitrage Bot Status</h2>
                 <div id="connection-status" class="text-muted">
                     <span class="loading"></span> Connecting...
                 </div>
             </div>
-            <div style="display: flex; gap: 1rem;">
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                <button id="start-bot" class="btn btn-success" onclick="startBot()" style="display: none;">
+                    ▶️ Start Bot
+                </button>
+                <button id="stop-bot" class="btn btn-error" onclick="stopBot()" style="display: none;">
+                    ⏹️ Stop Bot
+                </button>
                 <button id="refresh-data" class="btn btn-primary" onclick="refreshData()">
                     Refresh Data
                 </button>
+                <button id="check-funds" class="btn btn-secondary" onclick="checkFunds()">
+                    🔍 Check Funds
+                </button>
+                <button id="fund-wallet" class="btn btn-success" onclick="showWalletQR()">
+                    💰 Fund Wallet
+                </button>
             </div>
         </div>
-
-        <!-- Price Chart -->
-        <div class="card">
-            <div class="card-header">
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                    <h2 class="card-title" id="chart-title-text">SOL Price Chart (1 Hour)</h2>
-                    <div style="display: flex; align-items: center; gap: 15px;">
-                        <div class="timeframe-controls" style="display: flex; gap: 5px;">
-                            <button id="chart-1h" class="timeframe-btn active" onclick="switchTimeframe('1h')" style="padding: 5px 12px; background-color: var(--primary); color: var(--background); border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em;">1H</button>
-                            <button id="chart-12h" class="timeframe-btn" onclick="switchTimeframe('12h')" style="padding: 5px 12px; background-color: transparent; color: var(--text-muted); border: 1px solid var(--text-muted); border-radius: 4px; cursor: pointer; font-size: 0.85em;">12H</button>
-                            <button onclick="debugChart()" style="padding: 5px 12px; background-color: var(--warning); color: var(--background); border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em;">🔧 Debug</button>
-                        </div>
-                        <div style="display: flex; align-items: center;">
-                            <span style="color: #ef4444; margin-right: 5px; font-size: 1.5em;">●</span> Live
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div style="height: 300px; padding: 1rem; position: relative;" class="chart-container">
-                <canvas id="priceChart"></canvas>
-                <div id="chart-loading" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: rgba(13, 17, 47, 0.9); padding: 1.5rem; border-radius: 0.5rem; text-align: center; color: #a0a0b8; display: block; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); z-index: 10;">
-                    <div style="display: flex; flex-direction: column; align-items: center; gap: 0.75rem;">
-                        <div class="spinner" style="width: 30px; height: 30px; border: 3px solid rgba(20, 241, 149, 0.2); border-radius: 50%; border-top-color: #14f195; animation: spin 1s linear infinite;"></div>
-                        <div>Waiting for price data...</div>
-                        <div style="font-size: 0.85em; color: #a0a0b8; margin-top: 0.5em;">Chart will display when real data is available</div>
-                    </div>
-                </div>
-                <div id="chart-error" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: rgba(13, 17, 47, 0.8); padding: 1rem; border-radius: 0.5rem; text-align: center; color: #ef4444; display: none;">
-                    <div>Unable to load chart data</div>
-                    <div style="font-size: 0.85em; margin: 0.5rem 0;">Chart will display when real price data becomes available</div>
-                    <button onclick="updateChart()" style="margin-top: 10px; padding: 5px 10px; background-color: var(--primary); color: var(--background); border: none; border-radius: 4px; cursor: pointer;">Retry</button>
-                </div>            <style>
-                @keyframes spin {
-                    0% { transform: rotate(0deg); }
-                    100% { transform: rotate(360deg); }
-                }
-                
+            <style>
                 /* Tooltip styles */
                 .tooltip {
                     position: relative;
@@ -596,32 +682,34 @@
         </div>
 
         <!-- Portfolio & Recent Trades -->
-        <div class="grid grid-cols-2">
+        <div class="portfolio-trades-grid">
             <!-- Portfolio -->
             <div class="card">
                 <div class="card-header">
                     <h2 class="card-title">Portfolio</h2>
                 </div>
-                <table class="table">
-                    <tbody>
-                        <tr>
-                            <td>USD Balance</td>
-                            <td id="usd-balance">--</td>
-                        </tr>
-                        <tr>
-                            <td>SOL Balance</td>
-                            <td id="sol-balance">--</td>
-                        </tr>
-                        <tr>
-                            <td>Total Value</td>
-                            <td id="total-value">--</td>
-                        </tr>
-                        <tr>
-                            <td>Unrealized P&L</td>
-                            <td id="unrealized-pnl">--</td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div style="padding: 1.5rem;">
+                    <table class="table">
+                        <tbody>
+                            <tr>
+                                <td>USD Balance</td>
+                                <td id="usd-balance">--</td>
+                            </tr>
+                            <tr>
+                                <td>SOL Balance</td>
+                                <td id="sol-balance">--</td>
+                            </tr>
+                            <tr>
+                                <td>Total Value</td>
+                                <td id="total-value">--</td>
+                            </tr>
+                            <tr>
+                                <td>Unrealized P&L</td>
+                                <td id="unrealized-pnl">--</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <!-- Recent Trades -->
@@ -629,7 +717,7 @@
                 <div class="card-header">
                     <h2 class="card-title">Recent Trades</h2>
                 </div>
-                <div style="max-height: 200px; overflow-y: auto;" class="table-container">
+                <div class="table-container recent-trades">
                     <table class="table">
                         <thead>
                             <tr>
@@ -650,7 +738,7 @@
         </div>
 
         <!-- Arbitrage Trades Section -->
-        <div class="card">
+        <div class="card arbitrage-trades-section">
             <div class="card-header">
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <svg style="width: 24px; height: 24px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -664,7 +752,7 @@
                         🧪 Test Trades
                     </button>
                 </div>
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 0.5rem;">
                     <span id="arbitrage-profit" class="badge badge-success" style="display: flex; align-items: center;">
                         <svg style="width: 16px; height: 16px; margin-right: 4px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
@@ -689,7 +777,7 @@
                     </span>
                 </div>
             </div>
-            <div style="max-height: 300px; overflow-y: auto; overflow-x: auto; -webkit-overflow-scrolling: touch;" class="table-container">
+            <div class="table-container arbitrage-trades">
                 <table class="table">
                     <thead>
                         <tr>
@@ -713,6 +801,66 @@
 
     </div>
 
+    <!-- Funds Alert Modal -->
+    <div id="funds-alert-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="alert-title">⚠️ Insufficient Funds</h3>
+                <span class="close-btn" onclick="closeFundsAlert()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="alert-message"></div>
+                <div id="alert-details" class="alert-details"></div>
+                <div class="alert-actions">
+                    <button class="btn btn-primary" onclick="window.open('MAINNET_GUIDE.md', '_blank')">
+                        📖 View Funding Guide
+                    </button>
+                    <button class="btn btn-secondary" onclick="closeFundsAlert()">
+                        Dismiss
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Wallet QR Code Modal -->
+    <div id="wallet-qr-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>💰 Fund Your Wallet</h3>
+                <span class="close-btn" onclick="closeWalletQR()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div style="text-align: center;">
+                    <p><strong>Send SOL or USDT to this address:</strong></p>
+                    <div id="wallet-address-display" style="background: var(--surface-light); padding: 1rem; border-radius: 8px; margin: 1rem 0; font-family: monospace; word-break: break-all; border: 1px solid var(--border);">
+                        Loading...
+                    </div>
+                    <div id="qr-code-container" style="display: flex; justify-content: center; margin: 1.5rem 0;">
+                        <!-- QR code will be generated here -->
+                    </div>
+                    <div style="margin-top: 1rem;">
+                        <button class="btn btn-secondary" onclick="copyWalletAddress()">
+                            📋 Copy Address
+                        </button>
+                        <button class="btn btn-primary" onclick="checkFunds(); closeWalletQR();">
+                            🔍 Check Balance
+                        </button>
+                    </div>
+                    <div style="margin-top: 1rem; font-size: 0.9rem; color: var(--text-muted);">
+                        <p><strong>Supported tokens:</strong></p>
+                        <p>• SOL (for transaction fees)</p>
+                        <p>• USDT (for trading)</p>
+                        <p>• USDC (for trading)</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Container -->
+    <div id="notification-container"></div>
+
     <!-- Socket.IO -->
     <!-- JavaScript Libraries -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -724,465 +872,32 @@
             return false;
         };
         
-        // Initialize Chart
-        let priceChart;
-        function initChart() {
-            try {
-                console.log('🎯 Initializing chart...');
-                const ctx = document.getElementById('priceChart');
-                if (!ctx) {
-                    console.error('❌ Chart canvas element not found');
-                    return;
-                }
-                console.log('✅ Canvas element found');
-                
-                const currentTime = new Date();
-                const timeSlots = [];
-                // Generate 25 time slots for the last 12 hours (24 intervals) + current time
-                for (let i = 24; i >= 0; i--) { // 24 past 30-min intervals, 1 current
-                    const slotTime = new Date(currentTime.getTime() - (i * 30 * 60 * 1000));
-                    timeSlots.push(slotTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}));
-                }
-                console.log('⏰ Initial time slots (12 hours ending now):', timeSlots);
-                
-                priceChart = new Chart(ctx.getContext('2d'), {
-                    type: 'line',
-                    data: {
-                        labels: timeSlots,
-                        datasets: [{
-                            label: 'SOL Price (USD)',
-                            data: Array(25).fill(null), // 25 null values for 25 time slots
-                            borderColor: '#14f195',
-                            backgroundColor: 'rgba(20, 241, 149, 0.1)',
-                            borderWidth: 2,
-                            fill: true,
-                            tension: 0.4,
-                            pointRadius: 3,
-                            pointHoverRadius: 5,
-                            spanGaps: true
-                        }, {
-                            label: 'Current Price Point', // Will be hidden from legend
-                            data: Array(25).fill(null),
-                            borderColor: '#ef4444',
-                            backgroundColor: '#ef4444',
-                            borderWidth: 0,
-                            pointRadius: Array(25).fill(0),
-                            pointHoverRadius: Array(25).fill(0),
-                            pointBorderWidth: Array(25).fill(0),
-                            pointBorderColor: '#ffffff',
-                            showLine: false,
-                            pointStyle: 'circle'
-                        }]
-                    },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            labels: {
-                                color: '#ffffff',
-                                filter: function(item) {
-                                    // Only show legend for the first dataset (SOL Price USD)
-                                    return item.datasetIndex === 0;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            ticks: {
-                                color: '#a0a0b8'
-                            },
-                            grid: {
-                                color: '#2d2d5f',
-                                lineWidth: 1
-                            }
-                        },
-                        y: {
-                            ticks: {
-                                color: '#a0a0b8',
-                                callback: function(value) {
-                                    return '$' + value.toFixed(2);
-                                }
-                            },
-                            grid: {
-                                color: '#2d2d5f'
-                            }
-                        }
-                    },
-                    animation: {
-                        duration: 0
+        // Current price functionality
+        function getCurrentPrice() {
+            fetch('/api/price')
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.price) {
+                        console.log(`Current price updated: $${data.price}`);
                     }
-                }
-            });            console.log('📊 Chart created successfully');
-            
-            // REMOVE Initial price fetch from here; updateChart will handle it.
-            // setTimeout(async function() { ... }); 
-            
-            // Start the blinking animation for the current time dot (now the last dot)
-            startBlinkingDot(); // Will activate once data[24] is set by updateChart
-            console.log('💫 Blinking dot mechanism started');
-            } catch (error) {
-                console.error('❌ Error initializing chart:', error);
-            }
+                })
+                .catch(error => {
+                    console.error('Error fetching current price:', error);
+                });
         }
         
-        const chartTitleElement = document.getElementById('chart-title-text');
-
-        async function updateChart() {
-            try {
-                console.log('📈 Updating chart (12-hour view ending now)...');
-                if (!priceChart) {
-                    console.log('❌ Chart not initialized yet');
-                    return;
-                }
-                
-                // Just log the current state (no synthetic data)
-                const statusBadge = document.getElementById('status-badge');
-                if (statusBadge && statusBadge.textContent === 'Initializing') {
-                    console.log('🤖 Bot is in initializing state - will attempt to get real price data only');
-                }
-                
-                if (chartTitleElement) {
-                    chartTitleElement.textContent = 'SOL Price Chart (12 Hours - Loading...)';
-                }
-                
-                const response = await fetch('/api/price-history?hours=12.5'); // Fetch 12.5 hours to be safe with relative URL
-                const rawData = await response.json();
-                console.log('Raw price history data (for 12hr chart):', rawData);
-                
-                const currentTime = new Date();
-                const newTimeSlots = [];
-                const prices = Array(25).fill(null);
-
-                // Generate 25 time slots for the last 12 hours (24 intervals of 30min) + current time interval
-                for (let i = 24; i >= 0; i--) { 
-                    const slotTime = new Date(currentTime.getTime() - (i * 30 * 60 * 1000));
-                    newTimeSlots.push(slotTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}));
-                }
-                console.log('New time slots for chart (12hr ending now):', newTimeSlots);
-
-                if (rawData && rawData.length > 0) {
-                    const thirtyMinData = aggregateToThirtyMinutes(rawData);
-                    console.log('Aggregated 30-minute data (for 12hr chart):', thirtyMinData);
-
-                    // Map aggregated data to the 25 time slots
-                    // The slots are [T-720min, T-690min, ..., T-30min, T]
-                    for (let i = 0; i < 25; i++) {
-                        const targetSlotTime = new Date(currentTime.getTime() - ((24 - i) * 30 * 60 * 1000));
-                        
-                        const matchingData = thirtyMinData.find(d => {
-                            const dataTime = new Date(d.timestamp);
-                            // Check if dataTime falls into the 30-minute interval ending at targetSlotTime
-                            const intervalEnd = targetSlotTime;
-                            const intervalStart = new Date(targetSlotTime.getTime() - 30 * 60 * 1000);
-                            return dataTime >= intervalStart && dataTime < intervalEnd;
-                        });
-                        
-                        if (matchingData) {
-                            prices[i] = matchingData.price;
-                        } else if (i === 24) { // For the very last slot (current time)
-                             // Try to get the most recent point if no exact match for the last 30min slot
-                            const latestPoint = thirtyMinData.length > 0 ? thirtyMinData[thirtyMinData.length - 1] : null;
-                            if (latestPoint) {
-                                const latestTime = new Date(latestPoint.timestamp);
-                                // Check if latest point is within the last 30-60 minutes
-                                if (currentTime.getTime() - latestTime.getTime() < 60 * 60 * 1000) {
-                                    prices[i] = latestPoint.price;
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Fallback: if no data was matched to slots but we have data, put the most recent in the last slot
-                    if (prices.every(p => p === null) && thirtyMinData.length > 0) {
-                        console.log('No data matched time slots, using most recent data in last slot as fallback');
-                        const mostRecent = thirtyMinData[thirtyMinData.length - 1];
-                        prices[24] = mostRecent.price;
-                    }
-                    
-                    // Chart.js workaround: if we only have one data point, duplicate it to adjacent slots so it's visible
-                    const nonNullCount = prices.filter(p => p !== null).length;
-                    if (nonNullCount === 1) {
-                        console.log('Only one data point found, duplicating to adjacent slots for visibility');
-                        const singleValue = prices.find(p => p !== null);
-                        const singleIndex = prices.findIndex(p => p !== null);
-                        
-                        // Add the same value to adjacent time slots to make the line visible
-                        if (singleIndex > 0) prices[singleIndex - 1] = singleValue;
-                        if (singleIndex < 24) prices[singleIndex + 1] = singleValue;
-                        console.log('Extended single data point to adjacent slots for line visibility');
-                    }
-                    
-                    console.log('Prices for 12hr chart:', prices);
-                    
-                    priceChart.data.labels = newTimeSlots;
-                    priceChart.data.datasets[0].data = prices;
-                    
-                    // Adjust point radius based on data density for better visibility
-                    const dataPointCount = prices.filter(p => p !== null).length;
-                    if (dataPointCount <= 3) {
-                        priceChart.data.datasets[0].pointRadius = 6; // Larger points for sparse data
-                        priceChart.data.datasets[0].pointHoverRadius = 8;
-                    } else {
-                        priceChart.data.datasets[0].pointRadius = 3; // Normal points for dense data
-                        priceChart.data.datasets[0].pointHoverRadius = 5;
-                    }
-                    
-                    // Update current time dot (last position is index 24)
-                    const currentPriceForDot = prices[24]; 
-                    priceChart.data.datasets[1].data = Array(25).fill(null);
-                    if (currentPriceForDot !== null) {
-                        priceChart.data.datasets[1].data[24] = currentPriceForDot;
-                    }
-                    
-                    priceChart.update('none');
-                    if (chartTitleElement) {
-                        chartTitleElement.textContent = 'SOL Price Chart (12 Hours)';
-                    }
-                    console.log(`Chart updated with 12-hour data ending now.`);
-                    
-                    // Hide loading indicator
-                    const loadingElement = document.getElementById('chart-loading');
-                    if (loadingElement) loadingElement.style.display = 'none';
-
-                } else {
-                    console.warn('No price history data available for chart');
-                    
-                    // Try to get current price as fallback
-                    try {
-                        const currentPriceResponse = await fetch('/api/price');
-                        const currentPriceData = await currentPriceResponse.json();
-                        console.log('Fallback: Current price data:', currentPriceData);
-                        
-                        if (currentPriceData && currentPriceData.price) {
-                            // Show current price in the last slot
-                            priceChart.data.labels = newTimeSlots;
-                            priceChart.data.datasets[0].data = Array(25).fill(null);
-                            priceChart.data.datasets[0].data[24] = currentPriceData.price; // Show current price in last slot
-                            
-                            // Also show the blinking dot
-                            priceChart.data.datasets[1].data = Array(25).fill(null);
-                            priceChart.data.datasets[1].data[24] = currentPriceData.price;
-                            
-                            priceChart.update('none');
-                            
-                            if (chartTitleElement) {
-                                chartTitleElement.textContent = 'SOL Price Chart (Current Price Only)';
-                            }
-                            console.log('Chart updated with current price fallback');
-                            
-                            // Hide loading indicator
-                            const loadingElement = document.getElementById('chart-loading');
-                            if (loadingElement) loadingElement.style.display = 'none';
-                        } else {
-                            // No data at all
-                            priceChart.data.labels = newTimeSlots;
-                            priceChart.data.datasets[0].data = Array(25).fill(null); // Empty data
-                            priceChart.data.datasets[1].data = Array(25).fill(null); // Empty dot
-                            priceChart.update('none');
-
-                            if (chartTitleElement) {
-                                chartTitleElement.textContent = 'SOL Price Chart (No Data Yet)';
-                            }
-                            console.log('Chart updated to show no data state');
-                        }
-                    } catch (fallbackError) {
-                        console.error('Error fetching current price fallback:', fallbackError);
-                        // Fall back to no data state
-                        priceChart.data.labels = newTimeSlots;
-                        priceChart.data.datasets[0].data = Array(25).fill(null); // Empty data
-                        priceChart.data.datasets[1].data = Array(25).fill(null); // Empty dot
-                        priceChart.update('none');
-
-                        if (chartTitleElement) {
-                            chartTitleElement.textContent = 'SOL Price Chart (No Data Yet)';
-                        }
-                        console.log('Chart updated to show no data state after fallback error');
-                    }
-                    
-                    // Hide loading indicator
-                    const loadingElement = document.getElementById('chart-loading');
-                    if (loadingElement) loadingElement.style.display = 'none';
-                }
-            } catch (error) {
-                console.error('Error updating 12hr chart:', error);
-                if (chartTitleElement) {
-                    chartTitleElement.textContent = 'SOL Price Chart (Error)';
-                }
-            }
-        }
-
-        
-        // Debug function for chart troubleshooting
-        async function debugChart() {
-            console.log('🔧 Chart Debug Information:');
-            console.log('Chart initialized:', !!priceChart);
-            
-            try {
-                // Test price history API
-                console.log('📊 Testing /api/price-history...');
-                const historyResponse = await fetch('/api/price-history?hours=12.5');
-                const historyData = await historyResponse.json();
-                console.log('Price history response:', historyData);
-                
-                // Test current price API
-                console.log('💰 Testing /api/price...');
-                const priceResponse = await fetch('/api/price');
-                const priceData = await priceResponse.json();
-                console.log('Current price response:', priceData);
-                
-                // Test status API
-                console.log('📈 Testing /api/status...');
-                const statusResponse = await fetch('/api/status');
-                const statusData = await statusResponse.json();
-                console.log('Status response:', statusData);
-                
-                // Chart data inspection
-                if (priceChart) {
-                    console.log('📈 Chart data:');
-                    console.log('  Labels:', priceChart.data.labels.length, 'items');
-                    console.log('  Dataset 0 (price):', priceChart.data.datasets[0].data.filter(x => x !== null).length, 'non-null values');
-                    console.log('  Dataset 1 (dot):', priceChart.data.datasets[1].data.filter(x => x !== null).length, 'non-null values');
-                    console.log('  Sample prices:', priceChart.data.datasets[0].data.slice(-5));
-                }
-                
-                // Force a chart update
-                console.log('🔄 Forcing chart update...');
-                await updateChart();
-                
-            } catch (error) {
-                console.error('❌ Debug error:', error);
-            }
-        }
-        
-        // Aggregates raw price data into 30-minute intervals (optimized for Pi)
-        function aggregateToThirtyMinutes(rawData) {
-            const intervals = {};
-            
-            // Group data by 30-minute intervals
-            for (const point of rawData) {
-                if (!point.timestamp || typeof point.price !== 'number') continue;
-                
-                const timestamp = new Date(point.timestamp);
-                // Create a key based on 30-minute intervals
-                const intervalKey = new Date(
-                    timestamp.getFullYear(),
-                    timestamp.getMonth(),
-                    timestamp.getDate(),
-                    timestamp.getHours(),
-                    Math.floor(timestamp.getMinutes() / 30) * 30, // Round down to nearest 30 minutes
-                    0,
-                    0
-                ).toISOString();
-                
-                if (!intervals[intervalKey]) {
-                    intervals[intervalKey] = {
-                        timestamp: intervalKey,
-                        prices: [],
-                        high: point.price,
-                        low: point.price,
-                        open: point.price,
-                        close: point.price
-                    };
-                }
-                
-                const interval = intervals[intervalKey];
-                interval.prices.push(point.price);
-                interval.high = Math.max(interval.high, point.price);
-                interval.low = Math.min(interval.low, point.price);
-                interval.close = point.price; // Last price becomes close
-            }
-            
-            // Convert to array and calculate average prices
-            return Object.values(intervals).map(interval => ({
-                timestamp: interval.timestamp,
-                price: interval.prices.reduce((sum, p) => sum + p, 0) / interval.prices.length,
-                high: interval.high,
-                low: interval.low,
-                open: interval.open,
-                close: interval.close
-            })).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-        }
-        
-        // Helper function to get current price from aggregated data
-        function getCurrentPrice(thirtyMinData) {
-            if (!thirtyMinData.length) return null;
-            
-            const now = new Date();
-            // Find the most recent data point
-            const sorted = thirtyMinData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-            return sorted[0].price;
-        }
-        
-        // Blinking dot functionality
-        let blinkingDotVisible = true;
-        let blinkingInterval;
-        
-        function startBlinkingDot() {
-            // Clear any existing interval
-            if (blinkingInterval) {
-                clearInterval(blinkingInterval);
-            }
-            
-            blinkingInterval = setInterval(function() {
-                if (!priceChart || !priceChart.data.datasets[1] || priceChart.data.datasets[1].data[24] === null) return;
-                
-                blinkingDotVisible = !blinkingDotVisible;
-                const currentTimeDataset = priceChart.data.datasets[1];
-                
-                // Initialize pointRadius/HoverRadius/BorderWidth if not already arrays of correct length
-                // This ensures we don't error if they were somehow not initialized as arrays of 25 items
-                if (!Array.isArray(currentTimeDataset.pointRadius) || currentTimeDataset.pointRadius.length !== 25) {
-                    currentTimeDataset.pointRadius = Array(25).fill(0);
-                }
-                if (!Array.isArray(currentTimeDataset.pointHoverRadius) || currentTimeDataset.pointHoverRadius.length !== 25) {
-                    currentTimeDataset.pointHoverRadius = Array(25).fill(0);
-                }
-                if (!Array.isArray(currentTimeDataset.pointBorderWidth) || currentTimeDataset.pointBorderWidth.length !== 25) {
-                    currentTimeDataset.pointBorderWidth = Array(25).fill(0);
-                }
-
-                // Reset all points except the last one
-                for (let i = 0; i < 24; i++) {
-                    currentTimeDataset.pointRadius[i] = 0;
-                    currentTimeDataset.pointHoverRadius[i] = 0;
-                    currentTimeDataset.pointBorderWidth[i] = 0;
-                }
-                
-                if (blinkingDotVisible) {
-                    currentTimeDataset.pointRadius[24] = 12; // Last point prominent
-                    currentTimeDataset.pointHoverRadius[24] = 15;
-                    currentTimeDataset.pointBorderWidth[24] = 3;
-                } else {
-                    currentTimeDataset.pointRadius[24] = 8;  // Last point smaller/dimmer
-                    currentTimeDataset.pointHoverRadius[24] = 10;
-                    currentTimeDataset.pointBorderWidth[24] = 1;
-                }
-                
-                priceChart.update('none');
-            }, 600); // Blink every 0.6 seconds
-        }
-        
-        function updateCurrentTimeDot() {
-            if (!priceChart) return;
-            // This function might be less relevant now as updateChart handles the dot's Y value.
-            // The blinking is continuous via startBlinkingDot.
-            // We just need to ensure its Y value is correct, which updateChart does.
-            const currentPriceDataset = priceChart.data.datasets[0];
-            const blinkingDotDataset = priceChart.data.datasets[1];
-
-            if (currentPriceDataset.data.length === 25 && blinkingDotDataset.data.length === 25) {
-                const lastPrice = currentPriceDataset.data[24];
-                if (lastPrice !== null) {
-                    blinkingDotDataset.data[24] = lastPrice;
-                } else {
-                    // If last price is null, keep dot null or try to find previous non-null
-                    // For simplicity, if main line has no data at last point, dot also has no data.
-                    blinkingDotDataset.data[24] = null;
-                }
-            }
-            // priceChart.update('none'); // Potentially redundant if updateChart already called it
+        // Simple debug function that just checks the price API
+        function debugPrice() {
+            fetch('/api/price')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Price API debug:', data);
+                    alert(`Current SOL price: $${data.price ? parseFloat(data.price).toFixed(2) : 'N/A'}`);
+                })
+                .catch(error => {
+                    console.error('Debug error:', error);
+                    alert('Error debugging price: ' + error);
+                });
         }
 
         // Trading mode toggle
@@ -1256,17 +971,66 @@
 
         function updateTradingStatus(isActive, currentStatusText = null) {
             isTradingActive = isActive;
+            const startBtn = document.getElementById('start-bot');
+            const stopBtn = document.getElementById('stop-bot');
+            
+            // Update status badge
             if (statusBadge) {
                 if (currentStatusText) {
-                     statusBadge.textContent = currentStatusText;
-                     // Class will be updated by general status update from backend
+                    statusBadge.textContent = currentStatusText;
+                    
+                    // Set appropriate class based on status
+                    statusBadge.className = 'status-badge '; // Reset classes
+                    if (currentStatusText.toLowerCase() === 'running') {
+                        statusBadge.classList.add('status-running');
+                    } else if (currentStatusText.toLowerCase() === 'stopped') {
+                        statusBadge.classList.add('status-stopped');
+                    } else if (currentStatusText.toLowerCase() === 'starting') {
+                        statusBadge.classList.add('status-running'); // Use running style for starting
+                    } else if (currentStatusText.toLowerCase() === 'stopping') {
+                        statusBadge.classList.add('status-stopped'); // Use stopped style for stopping
+                    } else {
+                        statusBadge.classList.add('status-stopped'); // Default to stopped
+                    }
                 } else {
                     statusBadge.textContent = isTradingActive ? 'Running' : 'Stopped';
                     statusBadge.className = 'status-badge '; // Reset classes
                     statusBadge.classList.add(isTradingActive ? 'status-running' : 'status-stopped');
                 }
             }
-            console.log(`Trading status updated: Active = ${isTradingActive}, Badge = ${statusBadge.textContent}`);
+            
+            // Update button visibility based on actual status
+            if (startBtn && stopBtn) {
+                const status = currentStatusText ? currentStatusText.toLowerCase() : (isTradingActive ? 'running' : 'stopped');
+                
+                if (status === 'running') {
+                    // Bot is running - show stop button
+                    startBtn.style.display = 'none';
+                    stopBtn.style.display = 'inline-block';
+                    stopBtn.disabled = false;
+                    stopBtn.innerHTML = '⏹️ Stop Bot';
+                } else if (status === 'stopped') {
+                    // Bot is stopped - show start button
+                    startBtn.style.display = 'inline-block';
+                    stopBtn.style.display = 'none';
+                    startBtn.disabled = false;
+                    startBtn.innerHTML = '▶️ Start Bot';
+                } else if (status === 'starting') {
+                    // Bot is starting - show stop button (disabled) and hide start
+                    startBtn.style.display = 'none';
+                    stopBtn.style.display = 'inline-block';
+                    stopBtn.disabled = true; // Disable while starting
+                    stopBtn.innerHTML = '⏳ Starting...';
+                } else if (status === 'stopping') {
+                    // Bot is stopping - show start button (disabled) and hide stop
+                    startBtn.style.display = 'inline-block';
+                    stopBtn.style.display = 'none';
+                    startBtn.disabled = true; // Disable while stopping
+                    startBtn.innerHTML = '⏳ Stopping...';
+                }
+            }
+            
+            console.log(`Trading status updated: Active = ${isTradingActive}, Status = ${currentStatusText}, Badge = ${statusBadge.textContent}`);
         }
         
         // Initialize Socket.IO connection
@@ -1290,6 +1054,13 @@
         socket.on('connect', () => {
             console.log('🔗 Socket.IO connected!');
             document.getElementById('connection-status').innerHTML = '<span style=\"color: var(--success);\">●</span> Connected';
+            
+            // Ensure status badge gets updated from initializing state
+            if (statusBadge.textContent === "Initializing") {
+                statusBadge.textContent = "Connected";
+                statusBadge.className = 'status-badge status-stopped';
+            }
+            
             requestUpdate(); // Request initial data (including wallet and trading status)
         });
         
@@ -1314,25 +1085,11 @@
 
         socket.on('price_update', function(data) {
             console.log('📈 Received price_update:', data);
-            if (data && data.price) {
-                document.getElementById('current-price').textContent = `$${parseFloat(data.price).toFixed(2)}`;
-                
-                // Update the chart's last point if it's a live update
-                if (priceChart && priceChart.data.datasets[0].data.length === 25) {
-                    const prices = priceChart.data.datasets[0].data;
-                    prices[24] = parseFloat(data.price); // Last point (index 24)
-                    priceChart.data.datasets[0].data = prices;
-
-                    // Also update the blinking dot's Y value
-                    priceChart.data.datasets[1].data[24] = parseFloat(data.price);
-                    
-                    // Update the last label to reflect current time
-                    const currentMinuteLabel = new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
-                    priceChart.data.labels[24] = currentMinuteLabel;
-                    
-                    priceChart.update('none');
-                    console.log('📈 Updated chart with live price:', data.price);
-                }
+            // Price display has been removed from UI
+            // Request a status update to ensure we get the latest state
+            if (socket && socket.connected) {
+                console.log('📊 Requesting status update after price update');
+                socket.emit('request_update');
             }
         });
         
@@ -1342,6 +1099,7 @@
             if (data.status) {
                 const isActive = data.status.toLowerCase() === 'running';
                 updateTradingStatus(isActive, data.status);
+                // The updateTradingStatus function now handles button visibility and classes
             }
             if (data.mode) {
                 currentMode = data.mode.toLowerCase();
@@ -1360,14 +1118,42 @@
                 }
             }
             // Update other status elements as needed
-            if (data.portfolio_value) {
-                document.getElementById('portfolio-value').textContent = `$${parseFloat(data.portfolio_value).toFixed(2)}`;
+            if (data.portfolio_value !== undefined) {
+                document.getElementById('total-value').textContent = `$${parseFloat(data.portfolio_value).toFixed(2)}`;
             }
-            if (data.total_pnl) {
-                document.getElementById('total-pnl').textContent = `$${parseFloat(data.total_pnl).toFixed(2)}`;
+            if (data.total_pnl !== undefined) {
+                const pnlElement = document.getElementById('unrealized-pnl');
+                const pnlValue = parseFloat(data.total_pnl);
+                pnlElement.textContent = `$${pnlValue.toFixed(2)}`;
+                pnlElement.className = pnlValue >= 0 ? 'text-success' : 'text-error';
             }
             if (data.uptime) {
                 document.getElementById('uptime').textContent = data.uptime;
+            }
+            
+            // Update portfolio balances from wallet info
+            if (data.wallet_info && data.wallet_info.balance !== undefined) {
+                // For paper mode, show paper trading balance
+                if (data.mode === 'paper') {
+                    const paperBalance = parseFloat(data.portfolio_value || 0);
+                    document.getElementById('usd-balance').textContent = `$${paperBalance.toFixed(2)}`;
+                    document.getElementById('sol-balance').textContent = '0.00 SOL (Paper Mode)';
+                } else {
+                    // For live mode, get actual balances
+                    document.getElementById('sol-balance').textContent = `${parseFloat(data.wallet_info.balance || 0).toFixed(4)} SOL`;
+                    // We'll need to get USDT balance separately - for now show placeholder
+                    document.getElementById('usd-balance').textContent = '$0.00 USDT';
+                }
+            } else {
+                // Default values if no wallet info
+                if (data.mode === 'paper') {
+                    const paperBalance = parseFloat(data.portfolio_value || 0);
+                    document.getElementById('usd-balance').textContent = `$${paperBalance.toFixed(2)}`;
+                    document.getElementById('sol-balance').textContent = '0.00 SOL (Paper Mode)';
+                } else {
+                    document.getElementById('usd-balance').textContent = '$--';
+                    document.getElementById('sol-balance').textContent = '-- SOL';
+                }
             }
             
             if (data.wallet_info) {
@@ -1407,6 +1193,9 @@
                     successful_trades: data.recent_trades.filter(t => t.success).length
                 });
             }
+            
+            // Update start button state after status changes
+            setTimeout(updateStartButtonState, 100);
         });
 
         socket.on('trade_update', function(trade) {
@@ -1507,13 +1296,461 @@
             requestUpdate();
         }
         
-        // Expose function to global scope for onclick handler
-        window.refreshData = refreshData;
+        // Funds validation function
+        function checkFunds() {
+            console.log('🔍 Checking funds...');
+            const checkBtn = document.getElementById('check-funds');
+            
+            // Show loading state
+            checkBtn.disabled = true;
+            checkBtn.innerHTML = '⏳ Checking...';
+            
+            fetch('/api/validate-funds')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Funds validation result:', data);
+                    
+                    // Create notification based on result
+                    if (data.sufficient) {
+                        if (data.warnings && data.warnings.length > 0) {
+                            showNotification({
+                                title: '⚠️ Funds Warning',
+                                type: 'warning',
+                                message: `Funds are sufficient but low: ${data.warnings.join(', ')}`
+                            });
+                        } else {
+                            showNotification({
+                                title: '✅ Funds Check',
+                                type: 'success',
+                                message: `Funds are sufficient. SOL: ${data.sol_balance || 'N/A'}, USDT: $${data.usdt_balance || 'N/A'}`
+                            });
+                        }
+                    } else {
+                        if (data.mode === 'paper') {
+                            showNotification({
+                                title: 'ℹ️ Paper Mode',
+                                type: 'info',
+                                message: 'Paper trading mode - no funds required'
+                            });
+                        } else {
+                            // Show funds alert modal for serious issues
+                            showFundsAlert({
+                                type: 'manual_check',
+                                severity: 'critical',
+                                message: 'Insufficient funds detected',
+                                details: data,
+                                timestamp: new Date().toISOString()
+                            });
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking funds:', error);
+                    showNotification({
+                        title: '❌ Error',
+                        type: 'error',
+                        message: 'Failed to check funds: ' + error.message
+                    });
+                })
+                .finally(() => {
+                    // Restore button state
+                    checkBtn.disabled = false;
+                    checkBtn.innerHTML = '🔍 Check Funds';
+                });
+        }
         
-        // Update uptime and chart periodically
+        // Expose functions to global scope for onclick handlers
+        window.refreshData = refreshData;
+        window.checkFunds = checkFunds;
+        
+        // Function to update start button state based on funds and bot status
+        function updateStartButtonState() {
+            const startBtn = document.getElementById('start-bot');
+            const stopBtn = document.getElementById('stop-bot');
+            
+            if (!startBtn || !stopBtn) return;
+            
+            // Check if bot is running first
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(statusData => {
+                    if (statusData.running) {
+                        // Bot is running, show stop button
+                        startBtn.style.display = 'none';
+                        stopBtn.style.display = 'inline-block';
+                        return;
+                    }
+                    
+                    // Bot is stopped, show start button and check funds
+                    startBtn.style.display = 'inline-block';
+                    stopBtn.style.display = 'none';
+                    
+                    // Check funds if in live mode
+                    if (statusData.mode === 'live') {
+                        return fetch('/api/validate-funds');
+                    } else {
+                        // Paper mode - always enable start button
+                        startBtn.disabled = false;
+                        startBtn.classList.remove('btn-disabled');
+                        startBtn.title = '';
+                        return null;
+                    }
+                })
+                .then(response => {
+                    if (!response) return null;
+                    return response.json();
+                })
+                .then(fundsData => {
+                    if (!fundsData) return; // Paper mode or already handled
+                    
+                    if (fundsData.sufficient) {
+                        // Sufficient funds - enable start button
+                        startBtn.disabled = false;
+                        startBtn.classList.remove('btn-disabled');
+                        if (fundsData.warnings && fundsData.warnings.length > 0) {
+                            startBtn.title = `⚠️ Low funds: ${fundsData.warnings.join(', ')}`;
+                        } else {
+                            startBtn.title = '';
+                        }
+                    } else {
+                        // Insufficient funds - disable start button
+                        startBtn.disabled = true;
+                        startBtn.classList.add('btn-disabled');
+                        const issues = fundsData.issues || ['Insufficient funds'];
+                        startBtn.title = `❌ Cannot start: ${issues.join(', ')}`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error updating start button state:', error);
+                    // On error, disable the button to be safe
+                    startBtn.disabled = true;
+                    startBtn.classList.add('btn-disabled');
+                    startBtn.title = '❌ Error checking funds';
+                });
+        }
+
+        // Bot control functions
+        function startBot() {
+            console.log('🚀 Starting bot...');
+            const startBtn = document.getElementById('start-bot');
+            const stopBtn = document.getElementById('stop-bot');
+            
+            // Show loading state
+            startBtn.disabled = true;
+            startBtn.innerHTML = '⏳ Checking...';
+            
+            // First, validate funds if in live mode
+            fetch('/api/validate-funds')
+                .then(response => response.json())
+                .then(fundsData => {
+                    console.log('Funds validation before start:', fundsData);
+                    
+                    // If insufficient funds and in live mode, block start
+                    if (fundsData.mode === 'live' && !fundsData.sufficient) {
+                        showNotification({
+                            title: '❌ Cannot Start Bot',
+                            type: 'error',
+                            message: 'Insufficient funds for live trading. Please fund your wallet first.'
+                        });
+                        
+                        // Show detailed funds alert
+                        showFundsAlert({
+                            type: 'startup_blocked',
+                            severity: 'critical',
+                            message: 'Cannot start bot: insufficient funds',
+                            details: fundsData,
+                            timestamp: new Date().toISOString()
+                        });
+                        
+                        // Restore button state
+                        startBtn.disabled = false;
+                        startBtn.innerHTML = '🚀 Start Bot';
+                        return;
+                    }
+                    
+                    // Funds are sufficient or we're in paper mode, proceed with start
+                    startBtn.innerHTML = '⏳ Starting...';
+                    
+                    return fetch('/api/bot/start', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'}
+                    });
+                })
+                .then(response => {
+                    if (!response) return; // Funds check failed, already handled
+                    return response.json();
+                })
+                .then(data => {
+                    if (!data) return; // Funds check failed, already handled
+                    
+                    console.log('Bot start result:', data);
+                    
+                    if (data.success) {
+                        showNotification({
+                            title: '✅ Bot Started',
+                            type: 'success',
+                            message: 'Arbitrage bot started successfully'
+                        });
+                        
+                        // Update status immediately to 'Starting' to show proper transition
+                        updateTradingStatus(false, 'Starting');
+                        
+                        // Force status update via polling since WebSocket might be down
+                        setTimeout(() => {
+                            fetch('/api/status')
+                                .then(response => response.json())
+                                .then(statusData => {
+                                    console.log('Manual status update after start:', statusData);
+                                    // Update UI with latest status
+                                    if (statusData.status) {
+                                        updateTradingStatus(statusData.running, statusData.status);
+                                    } else if (typeof statusData.running !== 'undefined') {
+                                        updateTradingStatus(statusData.running, statusData.running ? 'Running' : 'Stopped');
+                                    }
+                                })
+                                .catch(err => console.log('Status fetch failed:', err));
+                        }, 500);
+                        
+                        // Request immediate status update through WebSocket if available
+                        setTimeout(requestUpdate, 1000);
+                    } else {
+                        showNotification({
+                            title: '❌ Start Failed',
+                            type: 'error',
+                            message: data.message || 'Failed to start bot'
+                        });
+                        
+                        // Restore button state
+                        startBtn.disabled = false;
+                        startBtn.innerHTML = '🚀 Start Bot';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error starting bot:', error);
+                    showNotification({
+                        title: '❌ Error',
+                        type: 'error',
+                        message: 'Failed to start bot: ' + error.message
+                    });
+                    
+                    // Restore button state
+                    startBtn.disabled = false;
+                    startBtn.innerHTML = '🚀 Start Bot';
+                });
+        }
+        
+        function stopBot() {
+            console.log('⏹️ Stopping bot...');
+            const startBtn = document.getElementById('start-bot');
+            const stopBtn = document.getElementById('stop-bot');
+            
+            // Show loading state
+            stopBtn.disabled = true;
+            stopBtn.innerHTML = '⏳ Stopping...';
+            
+            fetch('/api/bot/stop', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Bot stop result:', data);
+                    
+                    if (data.success) {
+                        showNotification({
+                            title: '⏹️ Bot Stopped',
+                            type: 'info',
+                            message: 'Arbitrage bot stopped successfully'
+                        });
+                        
+                        // Update status immediately to 'Stopping' to show proper transition
+                        updateTradingStatus(false, 'Stopping');
+                        
+                        // Force status update via polling since WebSocket might be down
+                        setTimeout(() => {
+                            fetch('/api/status')
+                                .then(response => response.json())
+                                .then(statusData => {
+                                    console.log('Manual status update after stop:', statusData);
+                                    // Update UI with latest status
+                                    if (statusData.status) {
+                                        updateTradingStatus(statusData.running, statusData.status);
+                                    } else if (typeof statusData.running !== 'undefined') {
+                                        updateTradingStatus(statusData.running, statusData.running ? 'Running' : 'Stopped');
+                                    }
+                                })
+                                .catch(err => console.log('Status fetch failed:', err));
+                        }, 500);
+                        
+                        // Request immediate status update through WebSocket if available
+                        setTimeout(requestUpdate, 1000);
+                    } else {
+                        showNotification({
+                            title: '❌ Stop Failed',
+                            type: 'error',
+                            message: data.error || 'Failed to stop bot'
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error stopping bot:', error);
+                    showNotification({
+                        title: '❌ Error',
+                        type: 'error',
+                        message: 'Failed to stop bot: ' + error.message
+                    });
+                })
+                .finally(() => {
+                    // Restore button state
+                    stopBtn.disabled = false;
+                    stopBtn.innerHTML = '⏹️ Stop Bot';
+                });
+        }
+        
+        // Expose bot control functions globally
+        window.startBot = startBot;
+        window.stopBot = stopBot;
+        
+        // Wallet QR Code functionality
+        function showWalletQR() {
+            console.log('🔍 Showing wallet QR code...');
+            
+            // Get wallet address from the dedicated API endpoint
+            fetch('/api/wallet-address')
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.success || !data.address) {
+                        showNotification({
+                            title: '❌ Error',
+                            type: 'error',
+                            message: data.error || 'Could not retrieve wallet address'
+                        });
+                        return;
+                    }
+                    
+                    const walletAddress = data.address;
+                    
+                    // Update the modal with wallet address
+                    document.getElementById('wallet-address-display').textContent = walletAddress;
+                    
+                    // Generate QR code
+                    generateQRCode(walletAddress);
+                    
+                    // Show the modal
+                    document.getElementById('wallet-qr-modal').style.display = 'flex';
+                })
+                .catch(error => {
+                    console.error('Error fetching wallet address:', error);
+                    showNotification({
+                        title: '❌ Error',
+                        type: 'error',
+                        message: 'Failed to get wallet address: ' + error.message
+                    });
+                });
+        }
+        
+        function generateQRCode(address) {
+            const container = document.getElementById('qr-code-container');
+            container.innerHTML = ''; // Clear existing QR code
+            
+            // Create QR code using a simple approach (text-based for now)
+            // In a production environment, you'd use a QR code library like qrcode.js
+            
+            // For now, create a simple QR code placeholder that links to a QR generator
+            const qrSize = 200;
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}x${qrSize}&data=${encodeURIComponent(address)}`;
+            
+            const qrImg = document.createElement('img');
+            qrImg.src = qrUrl;
+            qrImg.alt = 'Wallet Address QR Code';
+            qrImg.style.border = '1px solid var(--border)';
+            qrImg.style.borderRadius = '8px';
+            qrImg.style.maxWidth = '100%';
+            qrImg.style.height = 'auto';
+            
+            // Add loading state
+            qrImg.onload = () => {
+                console.log('QR code loaded successfully');
+            };
+            qrImg.onerror = () => {
+                console.error('Failed to load QR code');
+                container.innerHTML = '<p style="color: var(--error);">Failed to generate QR code</p>';
+            };
+            
+            container.appendChild(qrImg);
+        }
+        
+        function copyWalletAddress() {
+            const addressElement = document.getElementById('wallet-address-display');
+            const address = addressElement.textContent;
+            
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(address).then(() => {
+                    showNotification({
+                        title: '✅ Copied',
+                        type: 'success',
+                        message: 'Wallet address copied to clipboard'
+                    });
+                }).catch(err => {
+                    console.error('Failed to copy address:', err);
+                    fallbackCopyTextToClipboard(address);
+                });
+            } else {
+                fallbackCopyTextToClipboard(address);
+            }
+        }
+        
+        function fallbackCopyTextToClipboard(text) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.top = "0";
+            textArea.style.left = "0";
+            textArea.style.position = "fixed";
+            
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    showNotification({
+                        title: '✅ Copied',
+                        type: 'success',
+                        message: 'Wallet address copied to clipboard'
+                    });
+                } else {
+                    showNotification({
+                        title: '❌ Error',
+                        type: 'error',
+                        message: 'Failed to copy address'
+                    });
+                }
+            } catch (err) {
+                console.error('Fallback copy failed:', err);
+                showNotification({
+                    title: '❌ Error',
+                    type: 'error',
+                    message: 'Copy to clipboard not supported'
+                });
+            }
+            
+            document.body.removeChild(textArea);
+        }
+        
+        function closeWalletQR() {
+            document.getElementById('wallet-qr-modal').style.display = 'none';
+        }
+        
+        // Add to global scope
+        window.showWalletQR = showWalletQR;
+        window.copyWalletAddress = copyWalletAddress;
+        window.closeWalletQR = closeWalletQR;
+        
+        // Update uptime periodically
         setInterval(async function() {
             try {
-                const response = await fetch('http://localhost:5001/api/status');
+                const response = await fetch('/api/status');
                 const data = await response.json();
                 if (data.uptime) {
                     document.getElementById('uptime').textContent = data.uptime;
@@ -1523,17 +1760,29 @@
             }
         }, 60000);
         
+        // Update start button state periodically (every 30 seconds)
+        setInterval(function() {
+            updateStartButtonState();
+        }, 30000);
+        
         // DOMContentLoaded event listener
         document.addEventListener('DOMContentLoaded', function() {
             console.log('🎉 DOM fully loaded and parsed');
-            initChart();
-            updateChart(); // Initial call to fetch chart data (history and current)
-            
-            // Set up periodic updates for the chart (every 60 seconds)
-            setInterval(updateChart, 60 * 1000);
             
             // Initial call to set button state correctly
             updateTradingStatus(isTradingActive);
+            
+            // Initialize bot control button states (default to showing start button)
+            const startBtn = document.getElementById('start-bot');
+            const stopBtn = document.getElementById('stop-bot');
+            startBtn.style.display = 'inline-block';
+            stopBtn.style.display = 'none';
+            
+            // Update start button state based on funds
+            setTimeout(updateStartButtonState, 500);
+            
+            // Request initial data which will update button states correctly
+            setTimeout(requestUpdate, 1000); // Request update after a short delay
         });
         
         // Update wallet information
@@ -1671,6 +1920,12 @@
                 Math.round((successfulTrades / totalTrades) * 100) : 0;
             successRateElement.textContent = `Success Rate: ${successRate}%`;
             
+            // Store existing trade IDs to detect new trades
+            const existingTradeIds = new Set();
+            document.querySelectorAll('#arbitrage-trades-table tr[data-trade-id]').forEach(row => {
+                existingTradeIds.add(row.dataset.tradeId);
+            });
+            
             // Clear the table
             tableBody.innerHTML = '';
             
@@ -1687,13 +1942,7 @@
                 return new Date(b.timestamp || b.time || 0) - new Date(a.timestamp || a.time || 0);
             });
             
-            // Track trade IDs to detect new trades
-            const existingTradeIds = new Set();
-            document.querySelectorAll('#arbitrage-trades-table tr[data-trade-id]').forEach(row => {
-                existingTradeIds.add(row.dataset.tradeId);
-            });
-            
-            // Add each trade to the table
+            // Process each trade
             sortedTrades.forEach(trade => {
                 const row = document.createElement('tr');
                 
@@ -1702,8 +1951,7 @@
                 try {
                     tradeTime = new Date(trade.timestamp || trade.time);
                     if (isNaN(tradeTime.getTime())) {
-                        // If the date is invalid, use current time as fallback
-                        console.warn('Invalid trade timestamp, using current time');
+                        console.warn('Invalid timestamp, using current time');
                         tradeTime = new Date();
                     }
                 } catch (e) {
@@ -1711,18 +1959,13 @@
                     tradeTime = new Date();
                 }
                 
-                // Format time with padding for consistent width
                 const timeFormatted = tradeTime.toLocaleTimeString([], {
                     hour: '2-digit', 
-                    minute: '2-digit', 
-                    second: '2-digit'
+                    minute: '2-digit'
                 });
                 
                 // Determine trade success status with fallbacks
                 const isSuccess = trade.success === true;
-                
-                // Create the row HTML
-                // Check if there's an error to display
                 const hasError = !isSuccess && (trade.error || trade.error_message);
                 const errorMessage = trade.error || trade.error_message || 'Unknown error occurred';
                 
@@ -1739,52 +1982,33 @@
                 const statusClass = isSuccess ? 'text-success' : 'text-error';
                 const statusText = isSuccess ? '✅ Success' : '❌ Failed';
                 
-                // Create unique ID for this trade based on its properties
+                // Create unique ID for this trade
                 const tradeId = `${trade.timestamp || trade.time || Date.now()}-${trade.token_pair || ''}-${trade.buy_source || ''}-${trade.sell_source || ''}`;
                 row.dataset.tradeId = tradeId;
                 
                 // Check if this is a new trade
                 const isNewTrade = !existingTradeIds.has(tradeId);
                 
-                // Create the row with enhanced status cell for failed trades
+                // Create the row
                 row.innerHTML = `
                     <td>${timeFormatted}</td>
                     <td>${trade.token_pair || trade.pair || 'Unknown'}</td>
                     <td>${trade.buy_source || trade.buy_dex || 'N/A'}</td>
                     <td>${trade.sell_source || trade.sell_dex || 'N/A'}</td>
-                    <td>$${parseFloat(trade.trade_amount || trade.amount || 0).toFixed(2)}</td>
-                    <td class="${(parseFloat(trade.realized_profit || trade.profit || 0) > 0) ? 'text-success' : 'text-error'}">
-                        $${parseFloat(trade.realized_profit || trade.profit || 0).toFixed(4)}
-                    </td>
+                    <td>$${parseFloat(trade.amount || 0).toFixed(2)}</td>
+                    <td class="${statusClass}">$${parseFloat(trade.realized_profit || 0).toFixed(4)}</td>
                     <td class="${statusClass}">
-                        ${statusText} ${errorTooltip}
+                        ${statusText}${errorTooltip}
                     </td>
                 `;
                 
-                // Add hover effect and pointer cursor for rows with error details
+                // Add appropriate CSS classes for styling
                 if (hasError) {
                     row.classList.add('has-error');
-                    row.title = "Click for error details";
-                    row.style.cursor = "pointer";
-                    
-                    // Add click handler to show error details
-                    row.addEventListener('click', () => {
-                        showTradeErrorToast(errorMessage);
-                    });
                 }
                 
-                // Add highlight animation for new trades
                 if (isNewTrade) {
-                    if (hasError) {
-                        row.classList.add('new-error');
-                    } else {
-                        row.classList.add('new-success');
-                    }
-                    
-                    // Remove the animation class after it completes
-                    setTimeout(() => {
-                        row.classList.remove('new-error', 'new-success');
-                    }, 2000);
+                    row.classList.add(isSuccess ? 'new-success' : 'new-error');
                 }
                 
                 tableBody.appendChild(row);
@@ -1810,6 +2034,18 @@
             }, 100);
         });
 
+        // Handle funds alerts from backend
+        socket.on('funds_alert', function(alertData) {
+            console.error('🚨 FUNDS ALERT received:', alertData);
+            showFundsAlert(alertData);
+        });
+        
+        // Handle general notifications
+        socket.on('notification', function(notification) {
+            console.log('🔔 Notification received:', notification);
+            showNotification(notification);
+        });
+        
         // Toast notification system
         const toastContainer = document.getElementById('toast-container');
         
@@ -1860,76 +2096,109 @@
             return showToast(errorMessage, 'Trade Failed', 'error', 8000);
         }
         
-        // Test trades injection (single instance safe)
-        function injectTestTrades() {
-            const btn = document.getElementById('test-trades-btn');
-            btn.disabled = true;
-            btn.textContent = '🔄 Injecting...';
+        // Funds Alert Functions
+        function showFundsAlert(alertData) {
+            console.log('🚨 Displaying funds alert:', alertData);
             
-            fetch('/api/test-trades', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ count: 5 })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showToast(data.message, 'Test Trades', 'success', 3000);
-                    // Request update to refresh the UI
-                    setTimeout(() => {
-                        if (socket && socket.connected) {
-                            socket.emit('request_update');
-                        }
-                    }, 1000);
-                } else {
-                    showToast(data.error || 'Failed to inject test trades', 'Error', 'error', 5000);
-                }
-            })
-            .catch(error => {
-                console.error('Error injecting test trades:', error);
-                showToast('Failed to inject test trades', 'Error', 'error', 5000);
-            })
-            .finally(() => {
-                btn.disabled = false;
-                btn.textContent = '🧪 Test Trades';
-            });
-        }
-        
-        // Listen for trade errors
-        socket.on('trade_error', function(data) {
-            console.log('❌ Received trade_error:', data);
-            if (data && data.message) {
-                showTradeErrorToast(data.message);
+            const modal = document.getElementById('funds-alert-modal');
+            const title = document.getElementById('alert-title');
+            const message = document.getElementById('alert-message');
+            const details = document.getElementById('alert-details');
+            
+            // Set title based on alert type
+            if (alertData.type === 'startup_blocked') {
+                title.textContent = '🚫 Bot Start Blocked';
+            } else if (alertData.severity === 'critical') {
+                title.textContent = '🚨 Critical: Insufficient Funds';
             } else {
-                showTradeErrorToast('Unknown trade error occurred');
+                title.textContent = '⚠️ Low Funds Warning';
             }
-        });
+            
+            // Set message
+            message.innerHTML = `<p><strong>${alertData.message}</strong></p>`;
+            
+            // Format details
+            if (alertData.details) {
+                let detailsHTML = '';
+                
+                if (alertData.details.sol_balance !== undefined) {
+                    detailsHTML += `<p><strong>Current Balances:</strong></p>`;
+                    detailsHTML += `<p>• SOL: ${alertData.details.sol_balance || 0} (Required: ${alertData.details.min_sol_required || 'N/A'})</p>`;
+                    detailsHTML += `<p>• USDT: $${alertData.details.usdt_balance || 0} (Required: $${alertData.details.min_trading_balance || 'N/A'})</p>`;
+                }
+                
+                if (alertData.details.issues && alertData.details.issues.length > 0) {
+                    detailsHTML += `<p><strong>Issues:</strong></p>`;
+                    alertData.details.issues.forEach(issue => {
+                        detailsHTML += `<p style="color: var(--error);">❌ ${issue}</p>`;
+                    });
+                }
+                
+                if (alertData.details.warnings && alertData.details.warnings.length > 0) {
+                    detailsHTML += `<p><strong>Warnings:</strong></p>`;
+                    alertData.details.warnings.forEach(warning => {
+                        detailsHTML += `<p style="color: var(--warning);">⚠️ ${warning}</p>`;
+                    });
+                }
+                
+                detailsHTML += `<p><strong>Wallet Address:</strong><br><code>CKu6VmahxjZAmWdEDWTvprckax3cJJQ4qwHpuuELkxgm</code></p>`;
+                detailsHTML += `<p><strong>Action Required:</strong><br>${alertData.action_required || 'Fund your wallet before continuing'}</p>`;
+                
+                details.innerHTML = detailsHTML;
+            }
+            
+            // Show modal
+            modal.style.display = 'flex';
+        }
         
-        // Show table scroll hint on mobile
-        function addTableScrollHints() {
-            if (window.innerWidth <= 480) {
-                const tableContainers = document.querySelectorAll('.table-container');
-                tableContainers.forEach(container => {
-                    // Only add hint if table is wider than container
-                    const table = container.querySelector('table');
-                    if (table && table.offsetWidth > container.offsetWidth) {
-                        // Check if hint already exists
-                        if (!container.querySelector('.table-scroll-hint')) {
-                            const hint = document.createElement('div');
-                            hint.className = 'table-scroll-hint';
-                            hint.innerHTML = '<i>⟷</i> Scroll horizontally to see more';
-                            container.insertBefore(hint, table);
-                        }
+        function closeFundsAlert() {
+            const modal = document.getElementById('funds-alert-modal');
+            modal.style.display = 'none';
+        }
+        
+        function showNotification(notification) {
+            const container = document.getElementById('notification-container');
+            
+            const notificationEl = document.createElement('div');
+            notificationEl.className = `notification ${notification.type || 'info'}`;
+            
+            notificationEl.innerHTML = `
+                <div class="notification-header">
+                    <div class="notification-title">${notification.title || 'Notification'}</div>
+                    <span class="notification-close" onclick="this.parentElement.parentElement.remove()">&times;</span>
+                </div>
+                <div class="notification-message">${notification.message}</div>
+            `;
+            
+            container.appendChild(notificationEl);
+            
+            // Auto-remove after 10 seconds unless it's persistent
+            if (!notification.persistent) {
+                setTimeout(() => {
+                    if (notificationEl.parentElement) {
+                        notificationEl.remove();
                     }
-                });
+                }, 10000);
             }
         }
         
-        // Run on page load and whenever window is resized
-        window.addEventListener('load', addTableScrollHints);
-        window.addEventListener('resize', addTableScrollHints);
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const fundsModal = document.getElementById('funds-alert-modal');
+            const walletModal = document.getElementById('wallet-qr-modal');
+            
+            if (event.target === fundsModal) {
+                closeFundsAlert();
+            }
+            if (event.target === walletModal) {
+                closeWalletQR();
+            }
+        }
+        
+        // Expose functions globally for onclick handlers
+        window.closeFundsAlert = closeFundsAlert;
+        window.showFundsAlert = showFundsAlert;
+        window.showNotification = showNotification;
     </script>
 </body>
 </html>

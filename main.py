@@ -135,6 +135,9 @@ class ArbitrageBot:
         self.loop = None  # Store event loop for uptime calculations
         self.total_profits = 0.0
         self.trades_executed = 0
+        self.bot_task = None  # Store the async task
+        self._should_start = False  # Flag to indicate bot should start
+        self._should_stop = False   # Flag to indicate bot should stop
         
         # Callbacks
         self.callbacks = {}
@@ -158,7 +161,12 @@ class ArbitrageBot:
         
         # Main loop
         try:
-            while self.running:
+            while self.running and not self._should_stop:
+                # Check if we should stop
+                if self._should_stop:
+                    self.logger.info("Stop flag detected, breaking main loop")
+                    break
+                
                 # Bot health check
                 await self.health_check()
                 
@@ -175,6 +183,33 @@ class ArbitrageBot:
             self.logger.error(f"❌ Error in main bot loop: {e}")
         finally:
             await self.stop()
+    
+    async def stop(self):
+        """Stop the arbitrage bot."""
+        if not self.running:
+            self.logger.warning("⚠️ Bot is not running")
+            return
+        
+        self.logger.info("🛑 Stopping DEX Arbitrage Bot")
+        self.running = False
+        self._should_stop = True
+        
+        # Stop price feeds
+        await self.price_feed.stop()
+        
+        # Close Solana client
+        await self.solana_client.close()
+        
+        # Calculate and log final stats
+        uptime = self._get_uptime_str()
+        self.logger.info(f"📊 Bot stopped. Uptime: {uptime}, Trades executed: {self.trades_executed}, Total profits: {self.total_profits:.4f} USDC")
+        
+        # Reset state
+        self.start_time = None
+        self._should_stop = False
+        
+        # Emit final status change
+        self._emit_status_change()
     
     async def on_price_update(self, price_data):
         """Handle price updates from the price feeds."""
@@ -406,6 +441,34 @@ class ArbitrageBot:
         """Check if the bot is running."""
         return self.running
     
+    def request_start(self):
+        """Request bot to start (thread-safe)."""
+        if self.running:
+            return False
+        
+        # Simply start the bot directly in a task
+        if hasattr(self, 'loop') and self.loop:
+            try:
+                import asyncio
+                # Schedule the start in the main event loop
+                future = asyncio.run_coroutine_threadsafe(self.start(), self.loop)
+                return True
+            except Exception as e:
+                self.logger.error(f"Error scheduling bot start: {e}")
+                return False
+        else:
+            self.logger.error("No event loop available for bot start")
+            return False
+    
+    def request_stop(self):
+        """Request bot to stop (thread-safe)."""
+        if not self.running:
+            return False
+        
+        # Simply set the running flag to False, the bot loop will stop
+        self.running = False
+        return True
+    
     def get_last_update(self):
         """Get timestamp of last price update."""
         return self.price_feed._last_update if hasattr(self.price_feed, '_last_update') else 0
@@ -429,6 +492,75 @@ class ArbitrageBot:
             return sorted(trades, key=lambda x: x.get('timestamp', ''), reverse=True)[:limit] if trades else []
         return []
     
+    async def validate_trading_funds(self):
+        """Validate that wallet has sufficient funds for trading in live mode."""
+        if self.config['trading']['mode'] != 'live':
+            return {'sufficient': True, 'mode': 'paper', 'message': 'Paper trading mode - no funds required'}
+        
+        try:
+            # Get current balances using the solana client
+            sol_balance = await self.solana_client.get_balance('SOL')
+            usdt_balance = await self.solana_client.get_balance('USDT')
+            
+            # Define minimum requirements
+            min_sol_required = 0.05  # Minimum SOL for transaction fees
+            min_trading_balance = self.config['trading']['trade_amount'] * 2  # At least 2 trades worth
+            
+            issues = []
+            warnings = []
+            
+            # Check SOL balance for transaction fees
+            if sol_balance is None or sol_balance < min_sol_required:
+                issues.append(f"Insufficient SOL for transaction fees. Required: {min_sol_required} SOL, Available: {sol_balance or 0}")
+            elif sol_balance < 0.1:
+                warnings.append(f"Low SOL balance. Recommended: 0.1+ SOL for fees, Available: {sol_balance}")
+            
+            # Check trading balance
+            if usdt_balance is None or usdt_balance < min_trading_balance:
+                issues.append(f"Insufficient USDT for trading. Required: ${min_trading_balance}, Available: ${usdt_balance or 0}")
+            elif usdt_balance < self.config['trading']['trade_amount'] * 5:
+                warnings.append(f"Low USDT balance. Recommended: ${self.config['trading']['trade_amount'] * 5}+ for sustained trading")
+            
+            # Determine overall status
+            sufficient = len(issues) == 0
+            
+            result = {
+                'sufficient': sufficient,
+                'sol_balance': sol_balance,
+                'usdt_balance': usdt_balance,
+                'min_sol_required': min_sol_required,
+                'min_trading_balance': min_trading_balance,
+                'issues': issues,
+                'warnings': warnings,
+                'mode': 'live'
+            }
+            
+            # Log results
+            if not sufficient:
+                self.logger.error("🚨 INSUFFICIENT FUNDS FOR LIVE TRADING:")
+                for issue in issues:
+                    self.logger.error(f"   ❌ {issue}")
+                for warning in warnings:
+                    self.logger.warning(f"   ⚠️ {warning}")
+            elif warnings:
+                self.logger.warning("⚠️ TRADING FUNDS WARNING:")
+                for warning in warnings:
+                    self.logger.warning(f"   ⚠️ {warning}")
+            else:
+                self.logger.info("✅ Sufficient funds for live trading")
+                self.logger.info(f"   SOL: {sol_balance}, USDT: ${usdt_balance}")
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error validating trading funds: {e}")
+            return {
+                'sufficient': False,
+                'error': str(e),
+                'mode': 'live',
+                'issues': [f"Failed to check wallet balance: {e}"]
+            }
+
     def inject_test_trades(self, count=5):
         """Inject test trades for UI testing (single instance safe)."""
         import random
@@ -489,29 +621,6 @@ class ArbitrageBot:
         """API compatibility method for starting trading."""
         # Already handled by main start method
         return True
-    
-        # Already handled by main stop method
-        return True
-    
-    async def stop(self):
-        """Stop the arbitrage bot."""
-        if not self.running:
-            return
-        
-        self.running = False
-        self.logger.info("🛑 Stopping DEX Arbitrage Bot")
-        
-        # Stop price feeds
-        await self.price_feed.stop()
-        
-        # Close Solana client connection
-        if hasattr(self, 'solana_client') and self.solana_client:
-            await self.solana_client.close()
-        
-        # Final status
-        self.logger.info(f"📊 Bot stopped. Uptime: {self._get_uptime_str()}, "
-                       f"Trades executed: {self.trades_executed}, "
-                       f"Total profits: {self.total_profits:.4f} USDC")
     
     def report_trade_error(self, error_message, error_code=None, trade_details=None):
         """
@@ -651,14 +760,15 @@ async def main():
     
     # Initialize arbitrage bot
     bot = ArbitrageBot(config, trade_logger)
+    bot.loop = asyncio.get_event_loop()  # Store the main loop reference
     
     # Create Flask app
     app = create_app(config, bot)
     
-    # Start bot in background
-    bot_task = asyncio.create_task(bot.start())
+    # Don't start bot automatically - user must start it manually
+    # bot_task = asyncio.create_task(bot.start())
     
-    # Give the bot a moment to start
+    # Give the app a moment to initialize
     await asyncio.sleep(1)
     
     try:
@@ -772,11 +882,8 @@ async def main():
     finally:
         # Cleanup
         logger.info("Stopping trading bot...")
-        bot_task.cancel()
-        try:
-            await bot_task
-        except asyncio.CancelledError:
-            pass
+        if bot.is_running():
+            await bot.stop()
         logger.info("🐎 Workhorse stopped")
 
 

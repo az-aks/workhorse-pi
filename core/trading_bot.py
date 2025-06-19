@@ -53,7 +53,9 @@ class TradingBot:
         # Callbacks for UI updates
         self._callbacks = {}
         
-        self.logger.info("Trading bot initialized")
+        # Alert system for insufficient funds
+        self._last_funds_alert = None
+        self._funds_alert_cooldown = 300  # 5 minutes between alerts
     
     def set_callbacks(self, callbacks: Dict[str, Callable]):
         """Set callback functions for real-time updates."""
@@ -71,6 +73,27 @@ class TradingBot:
         """Start the trading bot."""
         if self._running:
             return
+        
+        # Validate funds for live trading mode
+        if self.config['trading']['mode'] == 'live':
+            self.logger.info("🔍 Validating funds for live trading mode...")
+            funds_validation = await self.validate_trading_funds()
+            
+            if not funds_validation['sufficient']:
+                self.logger.error("🚨 CANNOT START: Insufficient funds for live trading")
+                self._emit_callback('funds_alert', {
+                    'type': 'startup_blocked',
+                    'severity': 'critical',
+                    'message': 'Cannot start bot in live mode: insufficient funds',
+                    'details': funds_validation,
+                    'timestamp': datetime.now().isoformat()
+                })
+                # Don't start the bot if funds are insufficient
+                raise ValueError("Insufficient funds for live trading. Please fund wallet or switch to paper mode.")
+            
+            if funds_validation.get('warnings'):
+                self.logger.warning("⚠️ Starting with low funds - monitor closely")
+                self._send_funds_alert(funds_validation)
         
         self._running = True
         self._start_time = datetime.now()
@@ -149,6 +172,20 @@ class TradingBot:
     async def _execute_trade(self, signal: Dict, price_data: Dict):
         """Execute a trade based on signal."""
         try:
+            # Pre-trade funds validation for live mode
+            if self.config['trading']['mode'] == 'live':
+                funds_validation = await self.validate_trading_funds()
+                if not funds_validation['sufficient']:
+                    self.logger.error(f"🚨 Trade blocked due to insufficient funds:")
+                    for issue in funds_validation['issues']:
+                        self.logger.error(f"   ❌ {issue}")
+                    self._send_funds_alert(funds_validation)
+                    return  # Skip this trade
+                elif funds_validation.get('warnings'):
+                    # Log warnings but continue with trade
+                    for warning in funds_validation['warnings']:
+                        self.logger.warning(f"   ⚠️ {warning}")
+            
             trade_amount = self.config['trading']['trade_amount']
             current_price = price_data['price']
             
@@ -464,3 +501,99 @@ class TradingBot:
             'address': address,
             'balance': balance
         }
+    
+    async def validate_trading_funds(self) -> Dict:
+        """Validate that wallet has sufficient funds for trading in live mode."""
+        if self.config['trading']['mode'] != 'live':
+            return {'sufficient': True, 'mode': 'paper', 'message': 'Paper trading mode - no funds required'}
+        
+        try:
+            # Get current balances
+            sol_balance = await self.solana_client.get_balance('SOL')
+            usdt_balance = await self.solana_client.get_balance('USDT')
+            
+            # Define minimum requirements
+            min_sol_required = 0.05  # Minimum SOL for transaction fees
+            min_trading_balance = self.config['trading']['trade_amount'] * 2  # At least 2 trades worth
+            
+            issues = []
+            warnings = []
+            
+            # Check SOL balance for transaction fees
+            if sol_balance is None or sol_balance < min_sol_required:
+                issues.append(f"Insufficient SOL for transaction fees. Required: {min_sol_required} SOL, Available: {sol_balance or 0}")
+            elif sol_balance < 0.1:
+                warnings.append(f"Low SOL balance. Recommended: 0.1+ SOL for fees, Available: {sol_balance}")
+            
+            # Check trading balance
+            if usdt_balance is None or usdt_balance < min_trading_balance:
+                issues.append(f"Insufficient USDT for trading. Required: ${min_trading_balance}, Available: ${usdt_balance or 0}")
+            elif usdt_balance < self.config['trading']['trade_amount'] * 5:
+                warnings.append(f"Low USDT balance. Recommended: ${self.config['trading']['trade_amount'] * 5}+ for sustained trading")
+            
+            # Determine overall status
+            sufficient = len(issues) == 0
+            
+            result = {
+                'sufficient': sufficient,
+                'sol_balance': sol_balance,
+                'usdt_balance': usdt_balance,
+                'min_sol_required': min_sol_required,
+                'min_trading_balance': min_trading_balance,
+                'issues': issues,
+                'warnings': warnings,
+                'mode': 'live'
+            }
+            
+            # Log results
+            if not sufficient:
+                self.logger.error("🚨 INSUFFICIENT FUNDS FOR LIVE TRADING:")
+                for issue in issues:
+                    self.logger.error(f"   ❌ {issue}")
+                for warning in warnings:
+                    self.logger.warning(f"   ⚠️ {warning}")
+            elif warnings:
+                self.logger.warning("⚠️ TRADING FUNDS WARNING:")
+                for warning in warnings:
+                    self.logger.warning(f"   ⚠️ {warning}")
+            else:
+                self.logger.info("✅ Sufficient funds for live trading")
+                self.logger.info(f"   SOL: {sol_balance}, USDT: ${usdt_balance}")
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error validating trading funds: {e}")
+            return {
+                'sufficient': False,
+                'error': str(e),
+                'mode': 'live',
+                'issues': [f"Failed to check wallet balance: {e}"]
+            }
+    
+    def _should_send_funds_alert(self) -> bool:
+        """Check if we should send a funds alert (rate limiting)."""
+        if self._last_funds_alert is None:
+            return True
+        
+        time_since_last = time.time() - self._last_funds_alert
+        return time_since_last > self._funds_alert_cooldown
+    
+    def _send_funds_alert(self, validation_result: Dict):
+        """Send funds alert through callback system."""
+        if not self._should_send_funds_alert():
+            return
+        
+        self._last_funds_alert = time.time()
+        
+        alert_data = {
+            'type': 'insufficient_funds',
+            'severity': 'critical' if not validation_result['sufficient'] else 'warning',
+            'message': 'Insufficient funds for live trading',
+            'details': validation_result,
+            'timestamp': datetime.now().isoformat(),
+            'action_required': 'Fund wallet before continuing live trading'
+        }
+        
+        self.logger.critical(f"🚨 FUNDS ALERT: {alert_data['message']}")
+        self._emit_callback('funds_alert', alert_data)

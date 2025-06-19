@@ -248,6 +248,12 @@ class SolanaClient:
         
         self.logger.info("Solana client initialized")
     
+    def get_wallet_address(self) -> Optional[str]:
+        """Get the wallet address as a string."""
+        if self.public_key:
+            return str(self.public_key)
+        return None
+    
     async def get_balance(self, token_symbol: str = 'SOL') -> Optional[float]:
         """Get token balance for the wallet."""
         # Check if we're in paper trading mode
