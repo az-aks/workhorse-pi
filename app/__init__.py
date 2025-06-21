@@ -43,6 +43,29 @@ def create_app(config, trading_bot):
     # Store socketio reference in trading bot for error reporting
     if hasattr(trading_bot, '__class__') and trading_bot.__class__.__name__ == 'ArbitrageBot':
         trading_bot.socketio = socketio
+        
+        # Set up callbacks for real-time updates
+        def status_change_callback(status_data):
+            """Callback for status changes from the bot."""
+            logging.getLogger(__name__).info(f"Bot status changed, emitting update: {status_data}")
+            socketio.emit('status_update', status_data)
+        
+        def trade_executed_callback(trade_data):
+            """Callback for trade execution from the bot."""
+            logging.getLogger(__name__).info(f"Trade executed, emitting update: {trade_data}")
+            socketio.emit('trade_update', trade_data)
+        
+        def price_update_callback(price_data):
+            """Callback for price updates from the bot."""
+            logging.getLogger(__name__).debug(f"Price update from bot: {price_data}")
+            socketio.emit('price_update', price_data)
+        
+        # Register callbacks with the trading bot
+        trading_bot.set_callbacks({
+            'status_change': status_change_callback,
+            'trade_executed': trade_executed_callback,
+            'price_update': price_update_callback
+        })
     
     # Setup logging for Flask
     if not app.debug:

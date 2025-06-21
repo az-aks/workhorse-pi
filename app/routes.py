@@ -344,6 +344,85 @@ def api_wallet_address():
         }), 500
 
 
+@main_bp.route('/api/wallet/refresh', methods=['POST'])
+def api_wallet_refresh():
+    """Refresh wallet balances and return updated balance information."""
+    bot = current_app.config['TRADING_BOT']
+    
+    try:
+        import asyncio
+        
+        async def do_refresh():
+            # Call the refresh method on the bot
+            return await bot.refresh_wallet_balance()
+        
+        # Run the refresh asynchronously
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            success = loop.run_until_complete(do_refresh())
+            
+            if success:
+                # Get the updated wallet info with all balances
+                wallet_info = bot.get_wallet_info()
+                return jsonify({
+                    'success': True,
+                    'wallet_info': wallet_info,
+                    'message': 'Wallet balances refreshed successfully'
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'Failed to refresh wallet balances',
+                    'message': 'Balance refresh failed'
+                }), 500
+        finally:
+            loop.close()
+            
+    except Exception as e:
+        logger.error(f"Error refreshing wallet balances: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to refresh wallet balances'
+        }), 500
+
+
+@main_bp.route('/api/wallet-balance', methods=['GET'])
+def refresh_wallet_balance():
+    """Refresh the wallet balance."""
+    bot = current_app.config['TRADING_BOT']  # Add this line
+    
+    try:
+        import asyncio
+        
+        async def do_refresh():
+            # Call the refresh method on your bot instance
+            balance = await bot.refresh_wallet_balance()  # Change trading_bot to bot
+            return balance
+        
+        # Run the refresh
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            balance = loop.run_until_complete(do_refresh())
+            return jsonify({
+                'success': True,
+                'balance': balance,
+                'message': f'Balance updated: {balance} SOL' if balance is not None else 'Failed to fetch balance'
+            })
+        finally:
+            loop.close()
+            
+    except Exception as e:
+        logger.error(f"Error refreshing wallet balance: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to refresh balance'
+        }), 500
+
+
 @main_bp.errorhandler(404)
 def not_found(error):
     """Handle 404 errors."""

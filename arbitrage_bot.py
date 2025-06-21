@@ -35,7 +35,8 @@ logger = logging.getLogger(__name__)
 class ArbitrageBot:
     """DEX Arbitrage Bot for automated trading on Solana."""
     
-    def __init__(self, config_path):
+    def __init__(self, config_path: str):
+        """Initialize the ArbitrageBot with configuration."""
         self.logger = logging.getLogger(__name__)
         self.logger.info(f"🔄 Initializing Arbitrage Bot with config: {config_path}")
         
@@ -58,7 +59,42 @@ class ArbitrageBot:
         self.start_time = None
         self.total_profits = 0.0
         self.trades_executed = 0
+        
+        # Load real balance once during initialization
+        self._load_initial_balance()
     
+    def _load_initial_balance(self):
+        """Load the real wallet balance once during initialization."""
+        try:
+            import asyncio
+            
+            async def fetch_balance():
+                try:
+                    balance = await self.solana_client.get_real_balance()
+                    if balance is not None:
+                        self.solana_client._cached_real_balance = balance
+                        self.logger.info(f"💰 Loaded real wallet balance: {balance} SOL")
+                        return balance
+                    else:
+                        self.logger.error("Failed to fetch wallet balance - RPC returned None")
+                        return None
+                except Exception as e:
+                    self.logger.error(f"Error fetching wallet balance: {e}")
+                    return None
+            
+            # Run the balance loading synchronously
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                balance = loop.run_until_complete(fetch_balance())
+                if balance is None:
+                    self.logger.warning("Could not load initial balance")
+            finally:
+                loop.close()
+                
+        except Exception as e:
+            self.logger.error(f"Error in initial balance loading: {e}")
+
     async def start(self):
         """Start the arbitrage bot."""
         if self.running:
@@ -214,15 +250,88 @@ class ArbitrageBot:
                        f"Trades executed: {self.trades_executed}, "
                        f"Total profits: {self.total_profits:.4f} USDC")
     
+    async def refresh_wallet_balance(self):
+        """Refresh the wallet balance on demand."""
+        try:
+            self.logger.info("🔄 Refreshing wallet balances...")
+            balances = await self.solana_client.get_real_balance()
+            if balances is not None:
+                self.solana_client._cached_real_balances = balances
+                sol_balance = balances.get('SOL', 0)
+                usdc_balance = balances.get('USDC', 0)
+                usdt_balance = balances.get('USDT', 0)
+                self.logger.info(f"💰 Updated wallet balances: {sol_balance} SOL, {usdc_balance} USDC, {usdt_balance} USDT")
+                return True
+            else:
+                self.logger.error("Failed to refresh wallet balances - RPC returned None")
+                return False
+        except Exception as e:
+            self.logger.error(f"Error refreshing wallet balances: {e}")
+            return False
+
     def get_wallet_info(self):
         """Return information about the wallet for display in the UI."""
-        wallet_info = {
-            'address': str(self.solana_client.public_key) if hasattr(self.solana_client, 'public_key') and self.solana_client.public_key else None,
-            'balance': None  # Balance will be fetched asynchronously when displayed
-        }
-        self.logger.info(f"get_wallet_info called, returning: {wallet_info}")
-        return wallet_info
+        try:
+            # Get wallet address safely
+            address = None
+            if hasattr(self.solana_client, 'get_wallet_address'):
+                try:
+                    address = self.solana_client.get_wallet_address()
+                except Exception as e:
+                    self.logger.error(f"Error getting wallet address: {e}")
+                    
+            if address is None and hasattr(self.solana_client, 'public_key') and self.solana_client.public_key:
+                try:
+                    address = str(self.solana_client.public_key)
+                except Exception as e:
+                    self.logger.error(f"Error converting public_key to string: {e}")
+        
+            # Get cached balances (loaded once, refreshed on demand)
+            balances = None
+            if hasattr(self.solana_client, '_cached_real_balances'):
+                balances = self.solana_client._cached_real_balances
 
+            # For paper trading mode
+            trading_mode = self.config.get('trading', {}).get('mode', 'live')
+            if trading_mode == 'paper':
+                # Get paper trading balance
+                usdc_balance = None
+                if hasattr(self.strategy, '_paper_balance'):
+                    usdc_balance = self.strategy._paper_balance
+                else:
+                    usdc_balance = self.config.get('trading', {}).get('paper_trading', {}).get('initial_balance', 1000)
+                    
+                # For paper mode, show real SOL balance but paper USDC balance
+                paper_balances = balances if balances else {'SOL': 0.0, 'USDC': 0.0, 'USDT': 0.0}
+                paper_balances['USDC'] = usdc_balance  # Override USDC with paper balance
+                
+                return {
+                    'address': address,
+                    'balances': paper_balances,
+                    'paper_mode': True
+                }
+
+            # Live trading mode
+            if balances is None:
+                balances = {'SOL': 0.0, 'USDC': 0.0, 'USDT': 0.0}
+                
+            wallet_info = {
+                'address': address,
+                'balances': balances,
+                'paper_mode': False
+            }
+            
+            self.logger.info(f"get_wallet_info returning: {wallet_info}")
+            return wallet_info
+            
+        except Exception as e:
+            self.logger.error(f"Error in get_wallet_info: {e}")
+            return {
+                'address': None,
+                'balances': {'SOL': 0.0, 'USDC': 0.0, 'USDT': 0.0},
+                'paper_mode': self.config.get('trading', {}).get('mode', 'live') == 'paper'
+            }
+        
 
 async def main():
     """Main entry point for the DEX arbitrage bot."""

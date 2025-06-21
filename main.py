@@ -153,6 +153,9 @@ class ArbitrageBot:
         self.start_time = self.loop.time()    # Use loop's time
         self.logger.info("🚀 Starting DEX Arbitrage Bot")
         
+        # Emit immediate status change to notify UI that bot is starting
+        self._emit_status_change()
+        
         # Start price feeds
         await self.price_feed.start()
         
@@ -326,14 +329,89 @@ class ArbitrageBot:
             self.logger.error(f"Error getting current price: {e}")
             return {}
     
+    # Add this to your main bot class (wherever it's defined)
+    async def refresh_wallet_balance(self):
+        """Refresh the wallet balance on demand."""
+        try:
+            self.logger.info("🔄 Refreshing wallet balance...")
+            balance = await self.solana_client.get_real_balance()
+            if balance is not None:
+                self.solana_client._cached_real_balance = balance
+                self.logger.info(f"💰 Updated wallet balance: {balance} SOL")
+                return balance
+            else:
+                self.logger.error("Failed to refresh wallet balance - RPC returned None")
+                return self.solana_client._cached_real_balance if hasattr(self.solana_client, '_cached_real_balance') else None
+        except Exception as e:
+            self.logger.error(f"Error refreshing wallet balance: {e}")
+            return self.solana_client._cached_real_balance if hasattr(self.solana_client, '_cached_real_balance') else None
+    
+    
     def get_wallet_info(self):
         """Return information about the wallet for display in the UI."""
-        wallet_info = {
-            'address': str(self.solana_client.public_key) if hasattr(self.solana_client, 'public_key') and self.solana_client.public_key else None,
-            'balance': None,  # Balance will be fetched asynchronously when displayed
-            'pnl': self.total_profits if hasattr(self, 'total_profits') else 0.0
-        }
-        return wallet_info
+        try:
+            # Get wallet address safely
+            address = None
+            if hasattr(self.solana_client, 'get_wallet_address'):
+                try:
+                    address = self.solana_client.get_wallet_address()
+                except Exception as e:
+                    self.logger.error(f"Error getting wallet address: {e}")
+                    
+            if address is None and hasattr(self.solana_client, 'public_key') and self.solana_client.public_key:
+                try:
+                    address = str(self.solana_client.public_key)
+                except Exception as e:
+                    self.logger.error(f"Error converting public_key to string: {e}")
+        
+            # Get cached balances (loaded once, refreshed on demand)
+            balances = None
+            if hasattr(self.solana_client, '_cached_real_balances'):
+                balances = self.solana_client._cached_real_balances
+
+            # For paper trading mode
+            trading_mode = self.config.get('trading', {}).get('mode', 'live')
+            if trading_mode == 'paper':
+                # Get paper trading balance
+                usdc_balance = None
+                if hasattr(self.strategy, '_paper_balance'):
+                    usdc_balance = self.strategy._paper_balance
+                else:
+                    usdc_balance = self.config.get('trading', {}).get('paper_trading', {}).get('initial_balance', 1000)
+                    
+                # For paper mode, show real SOL balance but paper USDC balance
+                paper_balances = balances if balances else {'SOL': 0.0, 'USDC': 0.0, 'USDT': 0.0}
+                paper_balances['USDC'] = usdc_balance  # Override USDC with paper balance
+                
+                return {
+                    'address': address,
+                    'balances': paper_balances,
+                    'pnl': self.total_profits if hasattr(self, 'total_profits') else 0.0,
+                    'paper_mode': True
+                }
+
+            # Live trading mode
+            if balances is None:
+                balances = {'SOL': 0.0, 'USDC': 0.0, 'USDT': 0.0}
+                
+            wallet_info = {
+                'address': address,
+                'balances': balances,
+                'pnl': self.total_profits if hasattr(self, 'total_profits') else 0.0,
+                'paper_mode': False
+            }
+            
+            self.logger.info(f"get_wallet_info returning: {wallet_info}")
+            return wallet_info
+            
+        except Exception as e:
+            self.logger.error(f"Error in get_wallet_info: {e}")
+            return {
+                'address': None,
+                'balances': {'SOL': 0.0, 'USDC': 0.0, 'USDT': 0.0},
+                'pnl': 0.0,
+                'paper_mode': self.config.get('trading', {}).get('mode', 'live') == 'paper'
+            }
     
     def _get_uptime_str(self):
         """Get bot uptime as a formatted string."""
@@ -444,21 +522,53 @@ class ArbitrageBot:
     def request_start(self):
         """Request bot to start (thread-safe)."""
         if self.running:
+            self.logger.info("Bot is already running, ignoring start request")
             return False
         
-        # Simply start the bot directly in a task
+        # Check if we have access to the event loop
         if hasattr(self, 'loop') and self.loop:
             try:
                 import asyncio
+                self.logger.info(f"Scheduling bot start in stored event loop (running: {self.loop.is_running()})")
                 # Schedule the start in the main event loop
                 future = asyncio.run_coroutine_threadsafe(self.start(), self.loop)
+                # Add a callback to check the result
+                def check_result(fut):
+                    try:
+                        result = fut.result()
+                        self.logger.info(f"Bot start completed with result: {result}")
+                    except Exception as e:
+                        self.logger.error(f"Bot start failed with exception: {e}")
+                future.add_done_callback(check_result)
+                self.logger.info("Bot start scheduled successfully")
                 return True
             except Exception as e:
                 self.logger.error(f"Error scheduling bot start: {e}")
                 return False
         else:
-            self.logger.error("No event loop available for bot start")
-            return False
+            # Try to get the current event loop
+            try:
+                import asyncio
+                loop = asyncio.get_event_loop()
+                if loop and loop.is_running():
+                    self.logger.info(f"Using current event loop for bot start (running: {loop.is_running()})")
+                    future = asyncio.run_coroutine_threadsafe(self.start(), loop)
+                    # Add a callback to check the result
+                    def check_result(fut):
+                        try:
+                            result = fut.result()
+                            self.logger.info(f"Bot start completed with result: {result}")
+                        except Exception as e:
+                            self.logger.error(f"Bot start failed with exception: {e}")
+                    future.add_done_callback(check_result)
+                    self.logger.info("Bot start scheduled successfully")
+                    return True
+                else:
+                    self.logger.error("No running event loop available for bot start")
+                    return False
+            except Exception as e:
+                self.logger.error(f"Error getting event loop for bot start: {e}")
+                return False
     
     def request_stop(self):
         """Request bot to stop (thread-safe)."""
@@ -619,8 +729,13 @@ class ArbitrageBot:
     
     def start_trading(self):
         """API compatibility method for starting trading."""
-        # Already handled by main start method
-        return True
+        self.logger.info("start_trading() called, delegating to request_start()")
+        return self.request_start()
+        
+    def stop_trading(self):
+        """API compatibility method for stopping trading."""
+        self.logger.info("stop_trading() called, delegating to request_stop()")
+        return self.request_stop()
     
     def report_trade_error(self, error_message, error_code=None, trade_details=None):
         """

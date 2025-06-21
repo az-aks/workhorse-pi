@@ -772,6 +772,124 @@ class SolanaClient:
         if self.client:
             await self.client.close()
             self.logger.info("Solana client closed")
+    
+    async def get_real_balance(self) -> Optional[Dict[str, float]]:
+        """Get the real balances for SOL, USDC, and USDT (not paper trading)."""
+        try:
+            # Force real balance fetch regardless of paper trading mode
+            if not self.client:
+                self.logger.warning("Cannot get real balance: Solana client not initialized")
+                return None
+                
+            if not self.public_key:
+                self.logger.warning("Cannot get real balance: Wallet not loaded (public key is None)")
+                return None
+            
+            self.logger.info(f"Fetching real balances for {self.public_key}")
+            
+            balances = {}
+            
+            # Get SOL balance
+            try:
+                response = await self.client.get_balance(self.public_key)
+                self.logger.info(f"SOL balance response: {response}")
+                
+                if response and hasattr(response, 'value') and response.value is not None:
+                    # Convert lamports to SOL (1 SOL = 10^9 lamports)
+                    sol_balance = response.value / 1_000_000_000
+                    balances['SOL'] = sol_balance
+                    self.logger.info(f"SOL balance: {sol_balance}")
+                else:
+                    balances['SOL'] = 0.0
+                    self.logger.warning("SOL balance response value is None")
+            except Exception as e:
+                self.logger.error(f"Error getting SOL balance: {e}")
+                balances['SOL'] = 0.0
+            
+            # Get USDC balance
+            try:
+                usdc_mint = PublicKey(self.token_addresses['USDC'])
+                usdc_accounts = await self.client.get_token_accounts_by_owner(
+                    self.public_key,
+                    {"mint": usdc_mint}
+                )
+                
+                usdc_balance = 0.0
+                if usdc_accounts and hasattr(usdc_accounts, 'value') and usdc_accounts.value:
+                    for account in usdc_accounts.value:
+                        try:
+                            account_info = await self.client.get_account_info(account.pubkey)
+                            if account_info.value and account_info.value.data:
+                                # Parse token account data (first 64 bytes contain amount)
+                                # Bytes 64-72 contain the token amount (little-endian u64)
+                                import struct
+                                token_data = account_info.value.data
+                                if len(token_data) >= 72:
+                                    amount_bytes = token_data[64:72]
+                                    amount_lamports = struct.unpack('<Q', amount_bytes)[0]
+                                    # USDC has 6 decimals
+                                    amount_usdc = amount_lamports / 1_000_000
+                                    usdc_balance += amount_usdc
+                                    self.logger.info(f"Found USDC account with balance: {amount_usdc}")
+                        except Exception as e:
+                            self.logger.error(f"Error parsing USDC account: {e}")
+                            continue
+                
+                balances['USDC'] = usdc_balance
+                self.logger.info(f"Total USDC balance: {usdc_balance}")
+                
+            except Exception as e:
+                self.logger.error(f"Error getting USDC balance: {e}")
+                balances['USDC'] = 0.0
+            
+            # Get USDT balance
+            try:
+                usdt_mint = PublicKey(self.token_addresses['USDT'])
+                usdt_accounts = await self.client.get_token_accounts_by_owner(
+                    self.public_key,
+                    {"mint": usdt_mint}
+                )
+                
+                usdt_balance = 0.0
+                if usdt_accounts and hasattr(usdt_accounts, 'value') and usdt_accounts.value:
+                    for account in usdt_accounts.value:
+                        try:
+                            account_info = await self.client.get_account_info(account.pubkey)
+                            if account_info.value and account_info.value.data:
+                                # Parse token account data (first 64 bytes contain amount)
+                                # Bytes 64-72 contain the token amount (little-endian u64)
+                                import struct
+                                token_data = account_info.value.data
+                                if len(token_data) >= 72:
+                                    amount_bytes = token_data[64:72]
+                                    amount_lamports = struct.unpack('<Q', amount_bytes)[0]
+                                    # USDT has 6 decimals
+                                    amount_usdt = amount_lamports / 1_000_000
+                                    usdt_balance += amount_usdt
+                                    self.logger.info(f"Found USDT account with balance: {amount_usdt}")
+                        except Exception as e:
+                            self.logger.error(f"Error parsing USDT account: {e}")
+                            continue
+                
+                balances['USDT'] = usdt_balance
+                self.logger.info(f"Total USDT balance: {usdt_balance}")
+                
+            except Exception as e:
+                self.logger.error(f"Error getting USDT balance: {e}")
+                balances['USDT'] = 0.0
+            
+            self.logger.info(f"All balances fetched: {balances}")
+            return balances
+            
+        except Exception as e:
+            self.logger.error(f"Error getting real balances: {e}")
+            return None
+
+    def get_cached_balance(self) -> Optional[Dict[str, float]]:
+        """Get the cached balances if available."""
+        if hasattr(self, '_cached_real_balances'):
+            return self._cached_real_balances
+        return None
 
 
 # Utility functions for Solana integration
