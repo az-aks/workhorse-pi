@@ -1995,7 +1995,7 @@
                     <td>${trade.token_pair || trade.pair || 'Unknown'}</td>
                     <td>${trade.buy_source || trade.buy_dex || 'N/A'}</td>
                     <td>${trade.sell_source || trade.sell_dex || 'N/A'}</td>
-                    <td>$${parseFloat(trade.amount || 0).toFixed(2)}</td>
+                    <td>$${parseFloat(trade.amount || trade.trade_size || trade.trade_amount || 10).toFixed(2)}</td>
                     <td class="${statusClass}">$${parseFloat(trade.realized_profit || 0).toFixed(4)}</td>
                     <td class="${statusClass}">
                         ${statusText}${errorTooltip}
