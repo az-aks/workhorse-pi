@@ -940,24 +940,88 @@
         // Trading mode toggle
         let currentMode = 'paper'; // Default to paper mode
         
-        function toggleTradingMode() {
-            currentMode = currentMode === 'paper' ? 'mainnet' : 'paper';
+        async function toggleTradingMode() {
+            const newMode = currentMode === 'paper' ? 'mainnet' : 'paper';
             const modeText = document.getElementById('mode-text');
             const settingsBtn = document.querySelector('.settings-btn');
             
-            if (currentMode === 'mainnet') {
-                modeText.textContent = 'MAINNET';
-                settingsBtn.style.background = 'var(--error)';
-                settingsBtn.style.color = 'white';
-                settingsBtn.style.borderColor = 'var(--error)';
-            } else {
-                modeText.textContent = 'PAPER';
-                settingsBtn.style.background = 'var(--surface-light)';
-                settingsBtn.style.color = 'var(--text)';
-                settingsBtn.style.borderColor = 'var(--border)';
+            try {
+                // Show loading state
+                modeText.textContent = 'SWITCHING...';
+                settingsBtn.disabled = true;
+                
+                // Make API call to change mode
+                const response = await fetch('/api/trading/mode', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        mode: newMode
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Update current mode
+                    currentMode = newMode;
+                    
+                    // Update UI
+                    if (currentMode === 'mainnet') {
+                        modeText.textContent = 'MAINNET';
+                        settingsBtn.style.background = 'var(--error)';
+                        settingsBtn.style.color = 'white';
+                        settingsBtn.style.borderColor = 'var(--error)';
+                    } else {
+                        modeText.textContent = 'PAPER';
+                        settingsBtn.style.background = 'var(--surface-light)';
+                        settingsBtn.style.color = 'var(--text)';
+                        settingsBtn.style.borderColor = 'var(--border)';
+                    }
+                    
+                    console.log('Trading mode switched to:', currentMode.toUpperCase());
+                    
+                    // Show success notification
+                    showNotification({
+                        type: 'success',
+                        title: 'Mode Changed',
+                        message: `Trading mode switched to ${currentMode.toUpperCase()}`
+                    });
+                    
+                    // Request updated data
+                    requestUpdate();
+                    
+                } else {
+                    // Revert UI on error
+                    modeText.textContent = currentMode.toUpperCase();
+                    
+                    // Show error notification
+                    showNotification({
+                        type: 'error',
+                        title: 'Mode Change Failed',
+                        message: data.error || 'Failed to change trading mode'
+                    });
+                    
+                    console.error('Failed to change trading mode:', data.error);
+                }
+                
+            } catch (error) {
+                // Revert UI on error
+                modeText.textContent = currentMode.toUpperCase();
+                
+                // Show error notification
+                showNotification({
+                    type: 'error',
+                    title: 'Connection Error',
+                    message: 'Failed to connect to server'
+                });
+                
+                console.error('Error changing trading mode:', error);
+            } finally {
+                // Re-enable button
+                settingsBtn.disabled = false;
             }
-            
-            console.log('Trading mode switched to:', currentMode.toUpperCase());
         }
         
         // Request initial data function

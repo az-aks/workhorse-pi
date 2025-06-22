@@ -270,7 +270,9 @@ class ArbitrageBot:
             return False
 
     def get_wallet_info(self):
-        """Return information about the wallet for display in the UI."""
+        """Return information about the wallet for display in the UI.
+        Always shows real on-chain wallet balances regardless of trading mode.
+        """
         try:
             # Get wallet address safely
             address = None
@@ -286,42 +288,34 @@ class ArbitrageBot:
                 except Exception as e:
                     self.logger.error(f"Error converting public_key to string: {e}")
         
-            # Get cached balances (loaded once, refreshed on demand)
-            balances = None
+            # ALWAYS get real cached balances (actual on-chain wallet balances)
+            real_balances = None
             if hasattr(self.solana_client, '_cached_real_balances'):
-                balances = self.solana_client._cached_real_balances
+                real_balances = self.solana_client._cached_real_balances
 
-            # For paper trading mode
+            # Default to zero balances if none cached
+            if real_balances is None:
+                real_balances = {'SOL': 0.0, 'USDC': 0.0, 'USDT': 0.0}
+
+            # Get trading mode for display purposes
             trading_mode = self.config.get('trading', {}).get('mode', 'live')
-            if trading_mode == 'paper':
-                # Get paper trading balance
-                usdc_balance = None
-                if hasattr(self.strategy, '_paper_balance'):
-                    usdc_balance = self.strategy._paper_balance
-                else:
-                    usdc_balance = self.config.get('trading', {}).get('paper_trading', {}).get('initial_balance', 1000)
-                    
-                # For paper mode, show real SOL balance but paper USDC balance
-                paper_balances = balances if balances else {'SOL': 0.0, 'USDC': 0.0, 'USDT': 0.0}
-                paper_balances['USDC'] = usdc_balance  # Override USDC with paper balance
-                
-                return {
-                    'address': address,
-                    'balances': paper_balances,
-                    'paper_mode': True
-                }
-
-            # Live trading mode
-            if balances is None:
-                balances = {'SOL': 0.0, 'USDC': 0.0, 'USDT': 0.0}
+            is_paper_mode = trading_mode == 'paper'
+            
+            # Get paper trading profit/loss for display (separate from real balances)
+            paper_pnl = 0.0
+            if is_paper_mode and hasattr(self.strategy, '_paper_balance'):
+                initial_paper_balance = self.config.get('trading', {}).get('paper_trading', {}).get('initial_balance', 1000)
+                current_paper_balance = self.strategy._paper_balance
+                paper_pnl = current_paper_balance - initial_paper_balance
                 
             wallet_info = {
                 'address': address,
-                'balances': balances,
-                'paper_mode': False
+                'balances': real_balances,  # Always show real on-chain balances
+                'paper_mode': is_paper_mode,
+                'pnl': paper_pnl  # Paper trading P&L (if applicable)
             }
             
-            self.logger.info(f"get_wallet_info returning: {wallet_info}")
+            self.logger.debug(f"get_wallet_info returning real balances: {wallet_info}")
             return wallet_info
             
         except Exception as e:
@@ -329,7 +323,8 @@ class ArbitrageBot:
             return {
                 'address': None,
                 'balances': {'SOL': 0.0, 'USDC': 0.0, 'USDT': 0.0},
-                'paper_mode': self.config.get('trading', {}).get('mode', 'live') == 'paper'
+                'paper_mode': self.config.get('trading', {}).get('mode', 'live') == 'paper',
+                'pnl': 0.0
             }
         
 

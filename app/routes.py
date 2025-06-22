@@ -28,16 +28,23 @@ def api_status():
     config = current_app.config['CONFIG']
     
     try:
-        is_running = bot.is_running()
-        status = {
-            'running': is_running,
-            'status': 'Running' if is_running else 'Stopped',
-            'mode': config['trading']['mode'],
-            'token': config['trading']['token_symbol'],
-            'last_update': bot.get_last_update(),
-            'uptime': bot.get_uptime()
-        }
-        return jsonify(status)
+        # Use the comprehensive status method that includes wallet info
+        if hasattr(bot, 'get_status'):
+            status = bot.get_status()
+            return jsonify(status)
+        else:
+            # Fallback to basic status
+            is_running = bot.is_running()
+            status = {
+                'running': is_running,
+                'status': 'Running' if is_running else 'Stopped',
+                'mode': config['trading']['mode'],
+                'token': config['trading']['token_symbol'],
+                'last_update': bot.get_last_update(),
+                'uptime': bot.get_uptime(),
+                'wallet_info': bot.get_wallet_info() if hasattr(bot, 'get_wallet_info') else None
+            }
+            return jsonify(status)
     except Exception as e:
         logger.error(f"Error getting status: {e}")
         return jsonify({'error': str(e)}), 500
@@ -420,6 +427,96 @@ def refresh_wallet_balance():
             'success': False,
             'error': str(e),
             'message': 'Failed to refresh balance'
+        }), 500
+
+
+@main_bp.route('/api/trading/mode', methods=['POST'])
+def api_change_trading_mode():
+    """Change trading mode between paper and mainnet."""
+    bot = current_app.config['TRADING_BOT']
+    config = current_app.config['CONFIG']
+    
+    try:
+        data = request.get_json()
+        new_mode = data.get('mode', '').lower()
+        
+        if new_mode not in ['paper', 'mainnet']:
+            return jsonify({
+                'success': False,
+                'error': 'Invalid mode. Must be "paper" or "mainnet".'
+            }), 400
+        
+        # Update the configuration
+        old_mode = config['trading']['mode']
+        config['trading']['mode'] = new_mode
+        
+        # If switching to mainnet and bot is running, validate funds
+        if new_mode == 'mainnet' and bot.is_running():
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                validation_result = loop.run_until_complete(bot.validate_trading_funds())
+                if not validation_result.get('sufficient', False):
+                    # Revert the mode change
+                    config['trading']['mode'] = old_mode
+                    return jsonify({
+                        'success': False,
+                        'error': 'Insufficient funds for mainnet trading',
+                        'validation': validation_result
+                    }), 400
+            finally:
+                loop.close()
+        
+        # Trigger wallet balance refresh after mode change
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            refresh_success = loop.run_until_complete(bot.refresh_wallet_balance())
+            logger.info(f"Wallet balance refresh after mode change: {'success' if refresh_success else 'failed'}")
+        except Exception as e:
+            logger.error(f"Error refreshing wallet balance after mode change: {e}")
+        finally:
+            loop.close()
+        
+        # Emit status update to notify all connected clients
+        if hasattr(bot, '_emit_status_change'):
+            bot._emit_status_change()
+        
+        logger.info(f"Trading mode changed from {old_mode} to {new_mode}")
+        
+        return jsonify({
+            'success': True,
+            'old_mode': old_mode,
+            'new_mode': new_mode,
+            'message': f'Trading mode changed to {new_mode.upper()}'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error changing trading mode: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@main_bp.route('/api/trading/mode', methods=['GET'])
+def api_get_trading_mode():
+    """Get current trading mode."""
+    config = current_app.config['CONFIG']
+    
+    try:
+        current_mode = config['trading']['mode']
+        return jsonify({
+            'mode': current_mode,
+            'success': True
+        })
+    except Exception as e:
+        logger.error(f"Error getting trading mode: {e}")
+        return jsonify({
+            'error': str(e),
+            'success': False
         }), 500
 
 

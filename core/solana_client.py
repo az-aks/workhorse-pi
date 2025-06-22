@@ -40,14 +40,28 @@ class SolanaClient:
         self.config = config
         self.logger = logging.getLogger(__name__)
         
-        # Solana configuration
+        # Solana configuration with fallback endpoints
         solana_config = config.get('solana', {})
         self.rpc_endpoint = solana_config.get('rpc_endpoint', 'https://api.mainnet-beta.solana.com')
+        
+        # Fallback RPC endpoints in case primary fails
+        self.fallback_endpoints = [
+            'https://api.mainnet-beta.solana.com',
+            'https://rpc.ankr.com/solana',
+            'https://solana-api.projectserum.com',
+        ]
+        
         self.commitment = Commitment(solana_config.get('commitment', 'confirmed'))
         
-        # Initialize client
+        # Initialize client with timeout configuration
         try:
-            self.client = AsyncClient(self.rpc_endpoint, commitment=self.commitment)
+            import httpx
+            timeout_config = httpx.Timeout(30.0, connect=10.0)  # 30s total, 10s connect
+            self.client = AsyncClient(
+                self.rpc_endpoint, 
+                commitment=self.commitment,
+                timeout=timeout_config
+            )
             
             # Log RPC endpoint type
             if "jito" in self.rpc_endpoint.lower():
@@ -787,103 +801,193 @@ class SolanaClient:
             
             self.logger.info(f"Fetching real balances for {self.public_key}")
             
-            balances = {}
-            
-            # Get SOL balance
-            try:
-                response = await self.client.get_balance(self.public_key)
-                self.logger.info(f"SOL balance response: {response}")
-                
-                if response and hasattr(response, 'value') and response.value is not None:
-                    # Convert lamports to SOL (1 SOL = 10^9 lamports)
-                    sol_balance = response.value / 1_000_000_000
-                    balances['SOL'] = sol_balance
-                    self.logger.info(f"SOL balance: {sol_balance}")
-                else:
-                    balances['SOL'] = 0.0
-                    self.logger.warning("SOL balance response value is None")
-            except Exception as e:
-                self.logger.error(f"Error getting SOL balance: {e}")
-                balances['SOL'] = 0.0
-            
-            # Get USDC balance
-            try:
-                usdc_mint = PublicKey(self.token_addresses['USDC'])
-                usdc_accounts = await self.client.get_token_accounts_by_owner(
-                    self.public_key,
-                    {"mint": usdc_mint}
-                )
-                
-                usdc_balance = 0.0
-                if usdc_accounts and hasattr(usdc_accounts, 'value') and usdc_accounts.value:
-                    for account in usdc_accounts.value:
-                        try:
-                            account_info = await self.client.get_account_info(account.pubkey)
-                            if account_info.value and account_info.value.data:
-                                # Parse token account data (first 64 bytes contain amount)
-                                # Bytes 64-72 contain the token amount (little-endian u64)
-                                import struct
-                                token_data = account_info.value.data
-                                if len(token_data) >= 72:
-                                    amount_bytes = token_data[64:72]
-                                    amount_lamports = struct.unpack('<Q', amount_bytes)[0]
-                                    # USDC has 6 decimals
-                                    amount_usdc = amount_lamports / 1_000_000
-                                    usdc_balance += amount_usdc
-                                    self.logger.info(f"Found USDC account with balance: {amount_usdc}")
-                        except Exception as e:
-                            self.logger.error(f"Error parsing USDC account: {e}")
-                            continue
-                
-                balances['USDC'] = usdc_balance
-                self.logger.info(f"Total USDC balance: {usdc_balance}")
-                
-            except Exception as e:
-                self.logger.error(f"Error getting USDC balance: {e}")
-                balances['USDC'] = 0.0
-            
-            # Get USDT balance
-            try:
-                usdt_mint = PublicKey(self.token_addresses['USDT'])
-                usdt_accounts = await self.client.get_token_accounts_by_owner(
-                    self.public_key,
-                    {"mint": usdt_mint}
-                )
-                
-                usdt_balance = 0.0
-                if usdt_accounts and hasattr(usdt_accounts, 'value') and usdt_accounts.value:
-                    for account in usdt_accounts.value:
-                        try:
-                            account_info = await self.client.get_account_info(account.pubkey)
-                            if account_info.value and account_info.value.data:
-                                # Parse token account data (first 64 bytes contain amount)
-                                # Bytes 64-72 contain the token amount (little-endian u64)
-                                import struct
-                                token_data = account_info.value.data
-                                if len(token_data) >= 72:
-                                    amount_bytes = token_data[64:72]
-                                    amount_lamports = struct.unpack('<Q', amount_bytes)[0]
-                                    # USDT has 6 decimals
-                                    amount_usdt = amount_lamports / 1_000_000
-                                    usdt_balance += amount_usdt
-                                    self.logger.info(f"Found USDT account with balance: {amount_usdt}")
-                        except Exception as e:
-                            self.logger.error(f"Error parsing USDT account: {e}")
-                            continue
-                
-                balances['USDT'] = usdt_balance
-                self.logger.info(f"Total USDT balance: {usdt_balance}")
-                
-            except Exception as e:
-                self.logger.error(f"Error getting USDT balance: {e}")
-                balances['USDT'] = 0.0
-            
-            self.logger.info(f"All balances fetched: {balances}")
-            return balances
+            # Use fallback RPC system for balance fetching
+            return await self._try_with_fallback_rpc(self._fetch_all_balances)
             
         except Exception as e:
             self.logger.error(f"Error getting real balances: {e}")
             return None
+
+    async def _fetch_all_balances(self) -> Dict[str, float]:
+        """Internal method to fetch all balances (used with fallback RPC system)."""
+        balances = {}
+        
+        # Get SOL balance
+        try:
+            response = await self.client.get_balance(self.public_key)
+            self.logger.info(f"SOL balance response: {response}")
+            
+            if response and hasattr(response, 'value') and response.value is not None:
+                # Convert lamports to SOL (1 SOL = 10^9 lamports)
+                sol_balance = response.value / 1_000_000_000
+                balances['SOL'] = sol_balance
+                self.logger.info(f"SOL balance: {sol_balance}")
+            else:
+                balances['SOL'] = 0.0
+                self.logger.warning(f"SOL balance response invalid: {response}")
+        except Exception as e:
+            self.logger.error(f"Error getting SOL balance: {str(e)} (type: {type(e)})")
+            import traceback
+            self.logger.error(f"SOL balance traceback: {traceback.format_exc()}")
+            balances['SOL'] = 0.0
+        
+        # Get USDC balance
+        try:
+            usdc_mint = PublicKey.from_string(self.token_addresses['USDC'])
+            usdc_accounts = await self.client.get_token_accounts_by_owner(
+                self.public_key,
+                {"mint": usdc_mint}
+            )
+            
+            self.logger.info(f"USDC accounts response: {usdc_accounts}")
+            usdc_balance = 0.0
+            if usdc_accounts and hasattr(usdc_accounts, 'value') and usdc_accounts.value:
+                self.logger.info(f"Found {len(usdc_accounts.value)} USDC token accounts")
+                for account in usdc_accounts.value:
+                    try:
+                        self.logger.info(f"Processing USDC account: {account.pubkey}")
+                        account_info = await self.client.get_account_info(account.pubkey)
+                        self.logger.info(f"USDC account_info structure: {type(account_info)}")
+                        if account_info.value:
+                            self.logger.info(f"USDC account_info.value structure: {type(account_info.value)}")
+                            if hasattr(account_info.value, 'data'):
+                                self.logger.info(f"USDC account data structure: {type(account_info.value.data)}")
+                                
+                        if account_info.value and account_info.value.data:
+                            # Handle different data formats
+                            token_data = account_info.value.data
+                            self.logger.debug(f"Raw token_data type: {type(token_data)}, value: {token_data}")
+                            
+                            # Handle different data structures returned by Solana RPC
+                            if isinstance(token_data, dict):
+                                # New format: {"data": ["base64string", "encoding"], "executable": false, ...}
+                                if 'data' in token_data and isinstance(token_data['data'], list) and len(token_data['data']) >= 1:
+                                    # Extract the base64 data (first element)
+                                    base64_data = token_data['data'][0]
+                                    if isinstance(base64_data, str):
+                                        import base64
+                                        token_data = base64.b64decode(base64_data)
+                                    else:
+                                        self.logger.warning(f"Unexpected data format in dict: {token_data}")
+                                        continue
+                                else:
+                                    self.logger.warning(f"Dict data missing expected 'data' field: {token_data}")
+                                    continue
+                            elif isinstance(token_data, str):
+                                # Base64 encoded string
+                                import base64
+                                token_data = base64.b64decode(token_data)
+                            elif isinstance(token_data, list):
+                                # Array of bytes
+                                token_data = bytes(token_data)
+                            elif hasattr(token_data, 'data'):
+                                # Nested data structure
+                                nested_data = token_data.data
+                                if isinstance(nested_data, str):
+                                    import base64
+                                    token_data = base64.b64decode(nested_data)
+                                elif isinstance(nested_data, list):
+                                    token_data = bytes(nested_data)
+                                else:
+                                    self.logger.warning(f"Unsupported nested data type: {type(nested_data)}")
+                                    continue
+                            else:
+                                self.logger.warning(f"Unsupported token data type: {type(token_data)}")
+                                continue
+                            
+                            if len(token_data) >= 72:
+                                # Bytes 64-72 contain the token amount (little-endian u64)
+                                import struct
+                                amount_bytes = token_data[64:72]
+                                amount_lamports = struct.unpack('<Q', amount_bytes)[0]
+                                # USDC has 6 decimals
+                                amount_usdc = amount_lamports / 1_000_000
+                                usdc_balance += amount_usdc
+                                self.logger.info(f"Found USDC account with balance: {amount_usdc}")
+                            else:
+                                self.logger.warning(f"USDC token data too short: {len(token_data)} bytes")
+                    except Exception as e:
+                        self.logger.error(f"Error parsing USDC account: {e}")
+                        import traceback
+                        self.logger.error(f"USDC account full traceback: {traceback.format_exc()}")
+                        continue
+            
+            balances['USDC'] = usdc_balance
+            self.logger.info(f"Total USDC balance: {usdc_balance}")
+            
+        except Exception as e:
+            self.logger.error(f"Error getting USDC balance: {e}")
+            balances['USDC'] = 0.0
+        
+        # Get USDT balance
+        try:
+            usdt_mint = PublicKey.from_string(self.token_addresses['USDT'])
+            usdt_accounts = await self.client.get_token_accounts_by_owner(
+                self.public_key,
+                {"mint": usdt_mint}
+            )
+            
+            usdt_balance = 0.0
+            if usdt_accounts and hasattr(usdt_accounts, 'value') and usdt_accounts.value:
+                for account in usdt_accounts.value:
+                    try:
+                        account_info = await self.client.get_account_info(account.pubkey)
+                        if account_info.value and account_info.value.data:
+                            # Handle different data formats
+                            token_data = account_info.value.data
+                            
+                            # Handle different data structures returned by Solana RPC
+                            if isinstance(token_data, dict):
+                                # New format: {"data": ["base64string", "encoding"], "executable": false, ...}
+                                if 'data' in token_data and isinstance(token_data['data'], list) and len(token_data['data']) >= 1:
+                                    # Extract the base64 data (first element)
+                                    base64_data = token_data['data'][0]
+                                    if isinstance(base64_data, str):
+                                        import base64
+                                        token_data = base64.b64decode(base64_data)
+                                    else:
+                                        self.logger.warning(f"Unexpected USDT data format in dict: {token_data}")
+                                        continue
+                                else:
+                                    self.logger.warning(f"USDT dict data missing expected 'data' field: {token_data}")
+                                    continue
+                            elif isinstance(token_data, str):
+                                # Base64 encoded string
+                                import base64
+                                token_data = base64.b64decode(token_data)
+                            elif isinstance(token_data, list):
+                                # Array of bytes
+                                token_data = bytes(token_data)
+                            else:
+                                self.logger.warning(f"Unsupported USDT token data type: {type(token_data)}")
+                                continue
+                            
+                            if len(token_data) >= 72:
+                                # Bytes 64-72 contain the token amount (little-endian u64)
+                                import struct
+                                amount_bytes = token_data[64:72]
+                                amount_lamports = struct.unpack('<Q', amount_bytes)[0]
+                                # USDT has 6 decimals
+                                amount_usdt = amount_lamports / 1_000_000
+                                usdt_balance += amount_usdt
+                                self.logger.info(f"Found USDT account with balance: {amount_usdt}")
+                            else:
+                                self.logger.warning(f"USDT token data too short: {len(token_data)} bytes")
+                    except Exception as e:
+                        self.logger.error(f"Error parsing USDT account: {e}")
+                        import traceback
+                        self.logger.error(f"USDT account full traceback: {traceback.format_exc()}")
+                        continue
+            
+            balances['USDT'] = usdt_balance
+            self.logger.info(f"Total USDT balance: {usdt_balance}")
+            
+        except Exception as e:
+            self.logger.error(f"Error getting USDT balance: {e}")
+            balances['USDT'] = 0.0
+        
+        self.logger.info(f"All balances fetched: {balances}")
+        return balances
 
     def get_cached_balance(self) -> Optional[Dict[str, float]]:
         """Get the cached balances if available."""
@@ -891,6 +995,50 @@ class SolanaClient:
             return self._cached_real_balances
         return None
 
+    async def _try_with_fallback_rpc(self, operation_func, *args, **kwargs):
+        """Try an operation with the primary RPC, then fallback endpoints if it fails."""
+        try:
+            # Try with primary endpoint first
+            return await operation_func(*args, **kwargs)
+        except Exception as e:
+            self.logger.warning(f"Primary RPC failed ({self.rpc_endpoint}): {e}")
+            
+            # Try fallback endpoints
+            for fallback_endpoint in self.fallback_endpoints:
+                if fallback_endpoint == self.rpc_endpoint:
+                    continue  # Skip if it's the same as primary
+                    
+                try:
+                    self.logger.info(f"Trying fallback RPC: {fallback_endpoint}")
+                    
+                    # Create temporary client with fallback endpoint
+                    import httpx
+                    timeout_config = httpx.Timeout(15.0, connect=5.0)  # Shorter timeout for fallbacks
+                    temp_client = AsyncClient(
+                        fallback_endpoint, 
+                        commitment=self.commitment,
+                        timeout=timeout_config
+                    )
+                    
+                    # Replace the client temporarily
+                    original_client = self.client
+                    self.client = temp_client
+                    
+                    try:
+                        result = await operation_func(*args, **kwargs)
+                        self.logger.info(f"Successfully used fallback RPC: {fallback_endpoint}")
+                        return result
+                    finally:
+                        # Restore original client
+                        await temp_client.close()
+                        self.client = original_client
+                        
+                except Exception as fallback_error:
+                    self.logger.warning(f"Fallback RPC failed ({fallback_endpoint}): {fallback_error}")
+                    continue
+            
+            # If all fallbacks failed, raise the original error
+            raise e
 
 # Utility functions for Solana integration
 def pubkey_from_string(address: str) -> Optional[Any]:

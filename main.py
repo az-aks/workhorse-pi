@@ -150,7 +150,7 @@ class ArbitrageBot:
         
         self.running = True
         self.loop = asyncio.get_event_loop()  # Store the event loop
-        self.start_time = self.loop.time()    # Use loop's time
+        self.start_time = time.time()    # Use system time for consistent uptime calculation
         self.logger.info("🚀 Starting DEX Arbitrage Bot")
         
         # Emit immediate status change to notify UI that bot is starting
@@ -333,22 +333,73 @@ class ArbitrageBot:
     async def refresh_wallet_balance(self):
         """Refresh the wallet balance on demand."""
         try:
-            self.logger.info("🔄 Refreshing wallet balance...")
-            balance = await self.solana_client.get_real_balance()
-            if balance is not None:
-                self.solana_client._cached_real_balance = balance
-                self.logger.info(f"💰 Updated wallet balance: {balance} SOL")
-                return balance
+            self.logger.info("🔄 Refreshing wallet balances...")
+            
+            # First try to use the existing get_real_balance method
+            balances = await self.solana_client.get_real_balance()
+            
+            # If that fails (None or empty), try a more direct approach with fallback RPC
+            if balances is None or not any(balances.values() if isinstance(balances, dict) else []):
+                self.logger.warning("get_real_balance returned empty/None, trying direct balance fetch with fallback RPC...")
+                
+                # Try to create a temporary client with a working RPC endpoint
+                try:
+                    from solana.rpc.async_api import AsyncClient
+                    from solana.rpc.commitment import Commitment
+                    
+                    # Try standard Solana RPC first
+                    fallback_endpoints = [
+                        'https://api.mainnet-beta.solana.com',
+                        'https://rpc.ankr.com/solana',
+                        'https://solana-api.projectserum.com'
+                    ]
+                    
+                    for endpoint in fallback_endpoints:
+                        try:
+                            self.logger.info(f"Trying fallback RPC endpoint: {endpoint}")
+                            temp_client = AsyncClient(endpoint, commitment=Commitment("confirmed"))
+                            
+                            if self.solana_client.public_key:
+                                response = await temp_client.get_balance(self.solana_client.public_key)
+                                if response and hasattr(response, 'value') and response.value is not None:
+                                    sol_balance = response.value / 1_000_000_000
+                                    balances = {
+                                        'SOL': sol_balance,
+                                        'USDC': 0.0,  # For now, just focus on SOL
+                                        'USDT': 0.0
+                                    }
+                                    self.logger.info(f"Successfully fetched SOL balance from {endpoint}: {sol_balance}")
+                                    break
+                            
+                            await temp_client.close()
+                        except Exception as e:
+                            self.logger.warning(f"Fallback endpoint {endpoint} failed: {e}")
+                            continue
+                    
+                except Exception as e:
+                    self.logger.error(f"Error with fallback RPC approach: {e}")
+            
+            if balances is not None and any(balances.values() if isinstance(balances, dict) else []):
+                self.solana_client._cached_real_balances = balances
+                sol_balance = balances.get('SOL', 0)
+                usdc_balance = balances.get('USDC', 0)
+                usdt_balance = balances.get('USDT', 0)
+                self.logger.info(f"💰 Updated wallet balances: {sol_balance} SOL, {usdc_balance} USDC, {usdt_balance} USDT")
+                return True
             else:
-                self.logger.error("Failed to refresh wallet balance - RPC returned None")
-                return self.solana_client._cached_real_balance if hasattr(self.solana_client, '_cached_real_balance') else None
+                self.logger.error("Failed to refresh wallet balances - all methods returned None/empty")
+                return False
         except Exception as e:
-            self.logger.error(f"Error refreshing wallet balance: {e}")
-            return self.solana_client._cached_real_balance if hasattr(self.solana_client, '_cached_real_balance') else None
+            self.logger.error(f"Error refreshing wallet balances: {e}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            return False
     
     
     def get_wallet_info(self):
-        """Return information about the wallet for display in the UI."""
+        """Return information about the wallet for display in the UI.
+        Always shows real on-chain wallet balances regardless of trading mode.
+        """
         try:
             # Get wallet address safely
             address = None
@@ -364,44 +415,42 @@ class ArbitrageBot:
                 except Exception as e:
                     self.logger.error(f"Error converting public_key to string: {e}")
         
-            # Get cached balances (loaded once, refreshed on demand)
-            balances = None
+            # ALWAYS get real cached balances (actual on-chain wallet balances)
+            real_balances = None
             if hasattr(self.solana_client, '_cached_real_balances'):
-                balances = self.solana_client._cached_real_balances
+                real_balances = self.solana_client._cached_real_balances
 
-            # For paper trading mode
+            # If no cached balances or they're empty, trigger a refresh in the background
+            if real_balances is None or not any(real_balances.values() if isinstance(real_balances, dict) else []):
+                self.logger.info("No cached balances found, they may need refreshing")
+                # For now, return zeros but log that refresh is needed
+                real_balances = {'SOL': 0.0, 'USDC': 0.0, 'USDT': 0.0}
+            
+            # Ensure real_balances is a proper dictionary
+            if not isinstance(real_balances, dict):
+                real_balances = {'SOL': 0.0, 'USDC': 0.0, 'USDT': 0.0}
+
+            # Get trading mode for display purposes
             trading_mode = self.config.get('trading', {}).get('mode', 'live')
-            if trading_mode == 'paper':
-                # Get paper trading balance
-                usdc_balance = None
-                if hasattr(self.strategy, '_paper_balance'):
-                    usdc_balance = self.strategy._paper_balance
-                else:
-                    usdc_balance = self.config.get('trading', {}).get('paper_trading', {}).get('initial_balance', 1000)
-                    
-                # For paper mode, show real SOL balance but paper USDC balance
-                paper_balances = balances if balances else {'SOL': 0.0, 'USDC': 0.0, 'USDT': 0.0}
-                paper_balances['USDC'] = usdc_balance  # Override USDC with paper balance
-                
-                return {
-                    'address': address,
-                    'balances': paper_balances,
-                    'pnl': self.total_profits if hasattr(self, 'total_profits') else 0.0,
-                    'paper_mode': True
-                }
-
-            # Live trading mode
-            if balances is None:
-                balances = {'SOL': 0.0, 'USDC': 0.0, 'USDT': 0.0}
+            is_paper_mode = trading_mode == 'paper'
+            
+            # Get paper trading profit/loss for display (separate from real balances)
+            paper_pnl = 0.0
+            if is_paper_mode and hasattr(self.strategy, '_paper_balance'):
+                initial_paper_balance = self.config.get('trading', {}).get('paper_trading', {}).get('initial_balance', 1000)
+                current_paper_balance = self.strategy._paper_balance
+                paper_pnl = current_paper_balance - initial_paper_balance
+            elif hasattr(self, 'total_profits'):
+                paper_pnl = self.total_profits
                 
             wallet_info = {
                 'address': address,
-                'balances': balances,
-                'pnl': self.total_profits if hasattr(self, 'total_profits') else 0.0,
-                'paper_mode': False
+                'balances': real_balances,  # Always show real on-chain balances
+                'pnl': paper_pnl,  # Paper trading P&L or live trading profits
+                'paper_mode': is_paper_mode
             }
             
-            self.logger.info(f"get_wallet_info returning: {wallet_info}")
+            self.logger.debug(f"get_wallet_info returning real balances: {wallet_info}")
             return wallet_info
             
         except Exception as e:
@@ -419,21 +468,8 @@ class ArbitrageBot:
             return "0s"
         
         try:
-            # Try to use the stored event loop if available
-            if hasattr(self, 'loop') and self.loop:
-                current_time = self.loop.time()
-            else:
-                # Fallback to system time (convert start_time if needed)
-                if isinstance(self.start_time, (int, float)):
-                    # start_time is already a timestamp
-                    current_time = time.time()
-                else:
-                    # start_time might be from event loop, use system time instead
-                    current_time = time.time()
-                    # Reset start_time to system time for future calculations
-                    self.start_time = current_time
-                    return "0s"
-            
+            # Always use system time for consistent uptime calculation
+            current_time = time.time()
             uptime_seconds = int(current_time - self.start_time)
         except Exception as e:
             self.logger.warning(f"Error calculating uptime: {e}")
